@@ -27,6 +27,7 @@ public:
 	cl::Kernel mad_rows;
 	cl::Kernel edge_threshold;
 	cl::Kernel flag_rows;
+	cl::Kernel reduce;
 
 	// OpenCL enviroemtn variables.
 	cl::Program program;
@@ -49,7 +50,7 @@ public:
 
 	void CopyBuffer (const cl::Buffer& src, cl::Buffer& dest, size_t size);
 
-	void Mask(const cl::Buffer& d_in, cl::Buffer& d_out, cl::Buffer& d_mask, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	void Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, float mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 
 	void Upcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
 
@@ -59,10 +60,11 @@ public:
 
 	void EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 
-	void MADRows(const cl::Buffer& mads, cl::Buffer& d_in, size_t m, size_t n, size_t local_size);
+	void MADRows(const cl::Buffer& mads, cl::Buffer& medians, cl::Buffer& d_in, size_t m, size_t n, size_t local_size);
 
 	void FlagRows(const cl::Buffer& mask, float row_sum_threshold, size_t m, size_t n, size_t local_size);
 
+	float Reduce(const cl::Buffer d_in, size_t drop_out, size_t len, size_t local_size);
 
 };
 

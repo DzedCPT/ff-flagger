@@ -10,11 +10,11 @@
 
 
 kernel
-void mask(global float *d_out, const global float *d_in, const global float* mask, uint m, uint n) {
+void mask(global float *d_out, const global float *d_in, const global float* mask, float mask_value, uint m, uint n) {
 	uint i = get_global_id(0);
 	uint j = get_global_id(1);
 	if (i < m && j < n) {
-		d_out[i * n + j] = d_in[i * n + j] * (1 - mask[i * n + j]);
+		d_out[i * n + j] = mask[i *n + j] == 1 ? mask_value : d_in[i * n + j];
 	}
 
 }
@@ -84,7 +84,7 @@ void flag_rows(global float *mask, float row_sum_threshold, uint m, uint n) {
 }
 	
 kernel 
-void mad_rows(global float *mads, global float *d_in, uint m, uint n) {
+void mad_rows(global float *mads, global float *medians, global float *d_in, uint m, uint n) {
 	int i = get_global_id(0);
 
 	if (i >= m) { 
@@ -107,6 +107,7 @@ void mad_rows(global float *mads, global float *d_in, uint m, uint n) {
 		count += xx[k];
 		if (count > n / 2) {
 			median = k;
+			medians[i] = median;
 			break;
 		
 		}
@@ -133,3 +134,34 @@ void mad_rows(global float *mads, global float *d_in, uint m, uint n) {
 	mads[i] = MAD;
 		
 }
+
+
+kernel 
+void reduce(global float *in_data, global float *out_data, uint len, local float *local_mem) {
+	uint i = get_global_id(0);
+	uint local_i = get_local_id(0);
+	if (i >= len) {
+		local_mem[get_local_id(0)] = 0;
+		return;	
+	}
+	local_mem[get_local_id(0)] = in_data[i];
+
+	barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+
+	uint local_n = get_local_size(0);
+	uint stride = 1;
+	while (stride < local_n) {
+		if (local_i % (2 * stride) == 0 && local_i + stride < local_n) {
+			local_mem[local_i] += local_mem[local_i + stride];
+		}
+		stride *= 2;
+		barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+	
+	}
+
+	if (local_i == 0) {
+		out_data[get_group_id(0)] = local_mem[0];
+	}
+
+}
+

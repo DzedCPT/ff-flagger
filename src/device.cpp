@@ -71,6 +71,7 @@ GPUEnviroment::GPUEnviroment (void) {
 	// Create kernels.
 	mask = cl::Kernel(program, "mask", &error_code); CHECK_CL(error_code);
 	upcast = cl::Kernel(program, "upcast", &error_code); CHECK_CL(error_code);
+	reduce = cl::Kernel(program, "reduce", &error_code); CHECK_CL(error_code);
 	mad_rows = cl::Kernel(program, "mad_rows", &error_code); CHECK_CL(error_code);
 	downcast = cl::Kernel(program, "downcast", &error_code); CHECK_CL(error_code);
 	transpose = cl::Kernel(program, "transpose", &error_code); CHECK_CL(error_code);
@@ -129,7 +130,7 @@ void GPUEnviroment::Upcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len
 }
 
 
-void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, float mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
 	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
 
@@ -139,8 +140,9 @@ void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& 
 	CHECK_CL(mask.setArg(0, d_out));
 	CHECK_CL(mask.setArg(1, d_in));
 	CHECK_CL(mask.setArg(2, d_mask));
-	CHECK_CL(mask.setArg(3, static_cast<unsigned int>(m)));
-	CHECK_CL(mask.setArg(4, static_cast<unsigned int>(n)));
+	CHECK_CL(mask.setArg(3, mask_value));
+	CHECK_CL(mask.setArg(4, static_cast<unsigned int>(m)));
+	CHECK_CL(mask.setArg(5, static_cast<unsigned int>(n)));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(mask, cl::NullRange, global_range, local_range));
 
@@ -186,15 +188,16 @@ void GPUEnviroment::EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer
 
 }
 
-void GPUEnviroment::MADRows(const cl::Buffer& mads, cl::Buffer& d_in, size_t m, size_t n, size_t local_size) {
+void GPUEnviroment::MADRows(const cl::Buffer& mads, cl::Buffer& medians, cl::Buffer& d_in, size_t m, size_t n, size_t local_size) {
 	//size_t global_size_m = local_size_m * std::ceil((float) m / (local_size_m * window_size));
 	size_t global_size = local_size * std::ceil((float) m / local_size);
 
 	//void mad_rows(global float *d_out, global float *d_in, uint window_size, uint m, uint n, local float *local_mem) {
 	CHECK_CL(mad_rows.setArg(0, mads));
-	CHECK_CL(mad_rows.setArg(1, d_in));
-	CHECK_CL(mad_rows.setArg(2, static_cast<unsigned int>(m)));
-	CHECK_CL(mad_rows.setArg(3, static_cast<unsigned int>(n)));
+	CHECK_CL(mad_rows.setArg(1, medians));
+	CHECK_CL(mad_rows.setArg(2, d_in));
+	CHECK_CL(mad_rows.setArg(3, static_cast<unsigned int>(m)));
+	CHECK_CL(mad_rows.setArg(4, static_cast<unsigned int>(n)));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(mad_rows, cl::NullRange, global_size, local_size));
 
@@ -215,6 +218,52 @@ void GPUEnviroment::FlagRows(const cl::Buffer& mask, float row_sum_threshold, si
 
 
 }
+
+
+float GPUEnviroment::Reduce(const cl::Buffer d_in, size_t drop_out, size_t len, size_t local_size) {
+	// loCHECKcal_size cannot equal 1.
+	local_size = std::max(local_size, (size_t) 2);
+	size_t num_groups = std::ceil((float) len / local_size);
+	size_t global_size = local_size * num_groups;
+
+	// Setup device mem required for reduction.
+	cl::Buffer buffer_A = InitBuffer(CL_MEM_READ_WRITE, len * sizeof(float));
+	cl::Buffer buffer_B = InitBuffer(CL_MEM_READ_WRITE, num_groups * sizeof(float));
+	
+	// Init buffer_A to have the same values as d_in.
+	CopyBuffer (d_in, buffer_A, len * sizeof(float));
+
+	while (true) {
+		// Set args.
+		CHECK_CL(reduce.setArg(0, buffer_A));
+		CHECK_CL(reduce.setArg(1, buffer_B));
+		CHECK_CL(reduce.setArg(2, static_cast<unsigned int>(len)));
+		CHECK_CL(reduce.setArg(3, local_size * sizeof(float), NULL));
+
+		// Launch kernel.
+		CHECK_CL(queue.enqueueNDRangeKernel(reduce, cl::NullRange, global_size, local_size));
+
+		std::swap(buffer_A, buffer_B);
+
+		// Check if the number of values still to be reduced is less than drop out.
+		if (num_groups < drop_out) {
+			break;
+		}
+
+		// Set values for next reduce step on partally reduced values.
+		len = num_groups;	
+		num_groups = std::ceil((float) len / local_size);
+		global_size = local_size * num_groups;
+		
+	}
+
+	// Perform the final reduction sequentially.
+	std::vector<float> partially_reduced(num_groups);
+	ReadFromBuffer(partially_reduced.data(), buffer_A,  num_groups * sizeof(float));
+	return std::accumulate(partially_reduced.begin(), partially_reduced.end(), 0.0);
+}
+
+
 //void GPUEnviroment::MADRows(const cl::Buffer& d_out, cl::Buffer& d_in, size_t mad_size, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	////size_t global_size_m = local_size_m * std::ceil((float) m / (local_size_m * window_size));
 	//size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
