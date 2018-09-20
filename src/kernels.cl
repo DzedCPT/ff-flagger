@@ -23,7 +23,7 @@ kernel
 void downcast(global uchar *d_out, const global float *d_in, uint len) {
 	uint i = get_global_id(0);
 	if (i < len) {
-		d_out[i] = d_out[i] * (d_in[i] != 0.0);
+		d_out[i] = d_in[i];
 	}
 }
 
@@ -57,10 +57,11 @@ void edge_threshold(global float *mask, global float* mads, global float *d_in, 
 
 	float window_stat = d_in[i * n + j];
 	float value = fmin(fabs(window_stat - d_in[i * n + j - 1]), fabs(window_stat - d_in[i * n + j + 1]));
-	if (fabs(value / mads[i]) > threshold) {
+	if (mads[i] != 0 && fabs(value / mads[i]) > threshold) {
 		mask[i * n + j]	= 1;
 	}
 	
+
 }
 	
 kernel 

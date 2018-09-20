@@ -6,15 +6,17 @@
 #include "device.h"
 #include <CL/cl.hpp>
 
-void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& out_fil_file, float threshold, const size_t nbins, float total_time = 0) {
+void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& out_fil_file, float threshold, float row_threshold, const size_t nbins, float total_time = 0) {
 	std::vector<uint8_t> spectra;
 	size_t m = nbins;
 	size_t n = in_fil_file.header.nchans;
 	GPUEnviroment gpu;
 	cl::Buffer uint_buffer = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(uint8_t));
 	cl::Buffer float_buffer = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n  * sizeof(float));
+	cl::Buffer float_buffer_T = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n  * sizeof(float));
 	cl::Buffer mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(float));
-	cl::Buffer mads = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(float));
+	cl::Buffer mask_T = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(float));
+	cl::Buffer mads = gpu.InitBuffer(CL_MEM_READ_WRITE , n * sizeof(float));
 
     INIT_TIMER(timer);
     INIT_MARK(mark);
@@ -26,12 +28,16 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
 		in_fil_file.ReadInSpectraBlock(spectra);
 		gpu.WriteToBuffer(spectra.data(), uint_buffer, spectra.size() * sizeof(uint8_t));
 		gpu.Upcast(float_buffer, uint_buffer, spectra.size(), 500);
+        gpu.Transpose(float_buffer_T, float_buffer, m, n, 12, 12);
 
 		MARK_TIME(mark);
-		gpu.queue.enqueueFillBuffer(mask, 0, 0, in_fil_file.header.nchans * nbins * sizeof(float));
+		gpu.queue.enqueueFillBuffer(mask_T, 0, 0, n * m * sizeof(float));
 
-		gpu.MADRows(mads, float_buffer, m, n, 500);
-		gpu.EdgeThreshold(mask, mads, float_buffer, 2, m, n, 12, 12);
+		gpu.MADRows(mads, float_buffer_T, n, m, 500);
+		gpu.EdgeThreshold(mask_T, mads, float_buffer_T, threshold, n, m, 12, 12);
+
+        gpu.Transpose(mask, mask_T, n, m, 12, 12);
+        gpu.FlagRows(mask, row_threshold * n, m, n, 500);
 
 		gpu.Mask(float_buffer, float_buffer, mask, m, n, 12, 12);
 		gpu.Downcast(uint_buffer, float_buffer, spectra.size(), 500);
@@ -68,6 +74,9 @@ int main(int argc, char *argv[]) {
 	float threshold = 3.5;
 	app.add_option("-t,--threshold", threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
 
+    float row_threshold = 0.3;
+	app.add_option("-r,--row_threshold", row_threshold, "", true);
+
 	int n = 5000;
 	app.add_option("-n,--num_bins", n, "# of time bins per event.", true);
 
@@ -76,6 +85,6 @@ int main(int argc, char *argv[]) {
 	FilterBank<uint8_t> in_fil_file(in_file_path);
 	FilterBank<uint8_t> out_fil_file(out_file_path, in_fil_file.header);
 
-	ProcessFilterBank(in_fil_file, out_fil_file, threshold, n, time_seconds);
+	ProcessFilterBank(in_fil_file, out_fil_file, threshold, row_threshold, n, time_seconds);
 
 }
