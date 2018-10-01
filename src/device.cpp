@@ -130,7 +130,7 @@ void GPUEnviroment::Upcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len
 }
 
 
-void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, float mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, uint8_t mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
 	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
 
@@ -140,7 +140,7 @@ void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& 
 	CHECK_CL(mask.setArg(0, d_out));
 	CHECK_CL(mask.setArg(1, d_in));
 	CHECK_CL(mask.setArg(2, d_mask));
-	CHECK_CL(mask.setArg(3, mask_value));
+	CHECK_CL(mask.setArg(3, static_cast<unsigned int>(mask_value)));
 	CHECK_CL(mask.setArg(4, static_cast<unsigned int>(m)));
 	CHECK_CL(mask.setArg(5, static_cast<unsigned int>(n)));
 
@@ -153,6 +153,7 @@ void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& 
 void GPUEnviroment::Transpose(const cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
 	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
+	
 
 	cl::NDRange local_range(local_size_m, local_size_n);
 	cl::NDRange global_range(global_size_m, global_size_n);
@@ -263,6 +264,19 @@ float GPUEnviroment::Reduce(const cl::Buffer d_in, size_t drop_out, size_t len, 
 	return std::accumulate(partially_reduced.begin(), partially_reduced.end(), 0.0);
 }
 
+//void GPUENviromet::Grubb(const cl::Buffer data, size_t len, size_t work_size, local_size) {
+	//size_t global_size = local_size * std::ceil((float) m / local_size);
+
+	//CHECK_CL(flag_rows.setArg(0, mask));
+	//CHECK_CL(flag_rows.setArg(1, row_sum_threshold));
+	//CHECK_CL(flag_rows.setArg(2, static_cast<unsigned int>(m)));
+	//CHECK_CL(flag_rows.setArg(3, static_cast<unsigned int>(n)));
+
+	//CHECK_CL(queue.enqueueNDRangeKernel(flag_rows, cl::NullRange, global_size, local_size));
+
+
+
+//}
 
 //void GPUEnviroment::MADRows(const cl::Buffer& d_out, cl::Buffer& d_in, size_t mad_size, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	////size_t global_size_m = local_size_m * std::ceil((float) m / (local_size_m * window_size));

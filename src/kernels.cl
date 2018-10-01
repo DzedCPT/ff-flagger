@@ -10,7 +10,7 @@
 
 
 kernel
-void mask(global float *d_out, const global float *d_in, const global float* mask, float mask_value, uint m, uint n) {
+void mask(global uchar *d_out, const global uchar *d_in, const global uchar* mask, uint mask_value, uint m, uint n) {
 	uint i = get_global_id(0);
 	uint j = get_global_id(1);
 	if (i < m && j < n) {
@@ -28,7 +28,7 @@ void downcast(global uchar *d_out, const global float *d_in, uint len) {
 }
 
 kernel
-void transpose(global float *d_out, const global float *d_in, uint m, uint n) {
+void transpose(global uchar *d_out, const global uchar *d_in, uint m, uint n) {
 	uint i = get_global_id(0);
 	uint j = get_global_id(1);
 	if (i < m && j < n) {
@@ -47,7 +47,7 @@ void upcast(global float *d_out, const global uchar *d_in, uint len) {
 }
 
 kernel 
-void edge_threshold(global float *mask, global float* mads, global float *d_in, float threshold, uint m, uint n) {
+void edge_threshold(global uchar *mask, global uchar* mads, global uchar *d_in, float threshold, uint m, uint n) {
 	int i = get_global_id(0);
 	int j = get_global_id(1) + 1;
 
@@ -55,9 +55,9 @@ void edge_threshold(global float *mask, global float* mads, global float *d_in, 
 		return;
 	}
 
-	float window_stat = d_in[i * n + j];
-	float value = fmin(fabs(window_stat - d_in[i * n + j - 1]), fabs(window_stat - d_in[i * n + j + 1]));
-	if (mads[i] != 0 && fabs(value / mads[i]) > threshold) {
+	uchar window_stat = d_in[i * n + j];
+	float value = (float) min(abs(window_stat - d_in[i * n + j - 1]), abs(window_stat - d_in[i * n + j + 1]));
+	if (mads[i] != 0 && fabs(value / mads[i]) > (1.4826 * threshold)) {
 		mask[i * n + j]	= 1;
 	}
 	
@@ -84,7 +84,7 @@ void flag_rows(global float *mask, float row_sum_threshold, uint m, uint n) {
 }
 	
 kernel 
-void mad_rows(global float *mads, global float *medians, global float *d_in, uint m, uint n) {
+void mad_rows(global uchar *mads, global uchar *medians, global uchar *d_in, uint m, uint n) {
 	int i = get_global_id(0);
 
 	if (i >= m) { 
@@ -102,7 +102,7 @@ void mad_rows(global float *mads, global float *medians, global float *d_in, uin
 	}
 
 	uint count = 0;
-	uint median;
+	uchar median;
 	for (uint k = 0; k < 256; k++) {
 		count += xx[k];
 		if (count > n / 2) {
@@ -117,16 +117,16 @@ void mad_rows(global float *mads, global float *medians, global float *d_in, uin
 	}
 
 	for (int j = 0; j < n; j++) {
-		uint cc = fabs(d_in[i * n + j] - median);
+		uint cc = abs(d_in[i * n + j] - median);
 		xx[cc] += 1;
 	}
 
-	float MAD = 1;
+	uchar MAD = 1;
 	count = 0;
 	for (int k = 0; k < 256; k++) {
 		count += xx[k];
 		if (count > n / 2) {
-			MAD = 1.4826 * k;
+			MAD = k;
 			break;
 		}
 	}
