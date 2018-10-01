@@ -14,7 +14,11 @@ void mask(global float *d_out, const global float *d_in, const global float* mas
 	uint i = get_global_id(0);
 	uint j = get_global_id(1);
 	if (i < m && j < n) {
-		d_out[i * n + j] = mask[i *n + j] == 1 ? mask_value : d_in[i * n + j];
+		//d_out[i * n + j] = mask[i *n + j] == 1 ? 0 : d_in[i * n + j];
+        if (d_in[i * n + j] != 0) {
+		    d_out[i * n + j] = mask[i *n + j] == 1 ? mask_value : d_in[i * n + j];
+            //d_out[i * n + j] = mask_value;
+        }
 	}
 
 }
