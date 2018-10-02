@@ -24,6 +24,7 @@
 		} \
 	}
 
+
 using namespace std;
 GPUEnviroment gpu;
 std::vector<uint8_t> vec;
@@ -36,7 +37,7 @@ size_t local_size;
 
 std::random_device rd;     
 //std::mt19937 rng(rd()); 
-std::mt19937 rng(10); 
+std::mt19937 rng(5); 
 //std::uniform_int_distribution<T> uni;
 //std::uniform_real_distribution<> uni;
 std::uniform_int_distribution<int> uni;
@@ -85,18 +86,62 @@ float StandardDeviation(Iterator start, Iterator end, float mean) {
 }
 	
 
-//TEST_CASE( "Test GPU Reduce.", "[grubb], [kernel]" ) {
-	//for (size_t test = 0; test < 1; test++) {
-		//InitExperiment(10000);
-		//size_t step_size = std::min(1000, (int) vec.size());
-		//for(auto iter = vec.begin(); iter != vec.end(); iter += step_size) {
-			//float mean = Mean(iter, iter + step_size);
-			//float std = StandardDeviation(iter, iter + step_size, mean);
-			//step_size = std::min(step_size, (size_t) std::distance(iter, vec.end()));
-		//}
+TEST_CASE( "Test GPU Reduce.", "[grubb], [kernel]" ) {
+	size_t work_per_thread = 17;
+	size_t step_size;
+	for (size_t test = 0; test < 10; test++) {
+		InitExperiment(100000, 1, 0, 255);
+		work_per_thread = 17;
+		local_size = 645;
 
-	//}
-//}
+		step_size = work_per_thread * local_size;
+		step_size = std::min(step_size,  vec.size());
+
+		for(auto iter = vec.begin(); iter != vec.end(); iter += step_size) {
+			step_size = std::min(step_size, (size_t) std::distance(iter, vec.end()));
+			float mean = Mean(iter, iter + step_size);
+			float std = StandardDeviation(iter, iter + step_size, mean);
+			std::transform(iter, iter + step_size, iter, [mean, std](uint8_t x) -> uint8_t { return std::abs(x - mean) > std; });
+			
+		}
+
+		gpu.Grubb(d_in, m, work_per_thread, 1, local_size);
+
+		gpu.ReadFromBuffer(results.data(), d_in, m * sizeof(uint8_t));
+		
+		CHECK_VEC_EQUAL(results, vec);
+
+	}
+}
+
+
+TEST_CASE( "Test Flag rows.", "[row_flag], [rfi]" ) {
+	for (size_t test = 0; test < 10; test++) {
+		InitExperiment(1000, 1000, 0, 255);
+		std::vector<uint8_t> mask(m);
+		for (auto& v: mask) { v = (0.5 < std::uniform_real_distribution<>(0, 1)(rng)); } ;
+
+		for (size_t i = 0; i < m; i++) {
+			if (mask[i] == 1) {
+				for (size_t j = 0; j < n; j++) {
+					vec[i * n + j] = 0;
+				}	
+			}
+		}
+
+		// GPU.	
+		cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
+		gpu.WriteToBuffer(mask.data(), d_mask, m * sizeof(uint8_t));
+		gpu.MaskRows(d_in, d_mask, 0,  m, n, local_size);
+		
+		gpu.ReadFromBuffer(results.data(), d_in, m * n *sizeof(uint8_t));
+
+		CHECK_VEC_EQUAL(vec, results);
+
+
+	}
+
+}
 
 
 

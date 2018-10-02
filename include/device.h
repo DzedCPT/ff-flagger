@@ -21,6 +21,8 @@ public:
 	
 	// GPU kernels which this class provides a wrapper for.
 	cl::Kernel mask;
+	cl::Kernel grubb;
+	cl::Kernel mask_rows;
 	cl::Kernel upcast;
 	cl::Kernel downcast;
 	cl::Kernel transpose;
@@ -52,6 +54,8 @@ public:
 
 	void Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, uint8_t mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 
+	void MaskRows(const cl::Buffer& data, cl::Buffer& mask, uint8_t mask_value, size_t m, size_t n, size_t local_size);
+
 	void Upcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
 
 	void Downcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
@@ -66,7 +70,8 @@ public:
 
 	float Reduce(const cl::Buffer d_in, size_t drop_out, size_t len, size_t local_size);
 
-	//void Grubb(const cl::Buffer data, size_t len, size_t work_size, local_size);
+	//void Grubb(const cl::Buffer data, size_t len, size_t thread_offset, float threshold, size_t local_size);
+	void Grubb(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size);
 
 };
 

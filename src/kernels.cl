@@ -35,6 +35,153 @@ void transpose(global uchar *d_out, const global uchar *d_in, uint m, uint n) {
 		d_out[j * m + i] = d_in[i * n + j];
 	}
 }
+kernel 
+void grubb(global uchar *data, uint len, uint work_per_thread, float threshold, local float *local_mem, local float *pad) { 
+	uint global_data_index = get_global_id(0) * work_per_thread;
+	uint local_data_index = get_local_id(0) * work_per_thread;
+	uint work_group_index = get_local_id(0);
+	uint work_group_size = get_local_size(0);
+	uint work_group_data_size = work_group_size * work_per_thread;
+
+	if (global_data_index >= len) {
+		return;
+	}
+	if (get_group_id(0) == get_num_groups(0) - 1 ) {
+		work_group_data_size = len - (get_group_id(0) * work_group_size * work_per_thread );
+		work_group_size = ceil((float) work_group_data_size / work_per_thread);
+	
+	}
+	uint work = min(work_per_thread, len - global_data_index);
+
+	float sum = 0;
+	for (uint k = global_data_index, kk=local_data_index; k < global_data_index + work; k++, kk++) {
+		local_mem[kk] = data[k];
+		sum += data[k];
+	}
+	pad[get_local_id(0)] = sum;
+	
+	barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+
+	int stride = 1;
+	while (stride < work_group_size) {
+		if (work_group_index % (2 * stride) == 0 && work_group_index + stride < work_group_size) {
+			pad[work_group_index] += pad[work_group_index + stride];
+		}
+		stride *= 2;	
+		barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+		 
+	}
+	float mean = pad[0] / (work_group_data_size);
+
+	barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+
+	float total_deviation = 0;
+	for (uint kk=local_data_index; kk < local_data_index + work; kk++) {
+		total_deviation += pow(local_mem[kk] - mean, 2) / (work_group_data_size - 1) ;
+	}
+	pad[get_local_id(0)] = total_deviation;
+
+	barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+
+	stride = 1;
+	while (stride < work_group_size) {
+		if (work_group_index % (2 * stride) == 0 && work_group_index + stride < work_group_size) {
+			pad[work_group_index] += pad[work_group_index + stride];
+		}
+		stride *= 2;	
+		barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+		 
+	}
+	float std = sqrt(pad[0]);
+
+	barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+
+	for (uint k = global_data_index; k < global_data_index + work; k++) {
+		data[k] = (fabs(data[k] - mean) > threshold * std);
+	}
+
+
+}
+
+
+/*kernel */
+/*void grubb(global float *data, uint len, uint work_per_thread, float threshold, local float *local_mem, local float *pad) { */
+	/*uint global_data_index = get_global_id(0) * work_per_thread;*/
+	/*uint local_data_index = get_local_id(0) * work_per_thread;*/
+	/*uint work_group_index = get_local_id(0);*/
+	/*uint work_group_size = get_local_size(0);*/
+	/*uint work_group_data_size = work_group_size * work_per_thread;*/
+
+	/*if (global_data_index >= len) {*/
+		/*return;*/
+	/*}*/
+	/*if (get_group_id(0) == get_num_groups(0) - 1 ) {*/
+		/*work_group_data_size = len - (get_group_id(0) * work_group_size * work_per_thread );*/
+		/*work_group_size = ceil((float) work_group_data_size / work_per_thread);*/
+	
+	/*}*/
+	/*uint work = min(work_per_thread, len - global_data_index);*/
+
+	/*float sum = 0;*/
+	/*for (uint k = global_data_index, kk=local_data_index; k < global_data_index + work; k++, kk++) {*/
+		/*local_mem[kk] = data[k];*/
+		/*sum += data[k];*/
+	/*}*/
+	/*pad[get_local_id(0)] = sum;*/
+	
+	/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
+
+	/*int stride = 1;*/
+	/*while (stride < work_group_size) {*/
+		/*if (work_group_index % (2 * stride) == 0 && work_group_index + stride < work_group_size) {*/
+			/*pad[work_group_index] += pad[work_group_index + stride];*/
+		/*}*/
+		/*stride *= 2;	*/
+		/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
+		 
+	/*}*/
+	/*float mean = pad[0] / (work_group_data_size);*/
+
+	/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
+
+	/*float total_deviation = 0;*/
+	/*for (uint kk=local_data_index; kk < local_data_index + work; kk++) {*/
+		/*total_deviation += pow(local_mem[kk] - mean, 2) / (work_group_data_size - 1) ;*/
+	/*}*/
+	/*pad[get_local_id(0)] = total_deviation;*/
+
+	/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
+
+	/*stride = 1;*/
+	/*while (stride < work_group_size) {*/
+		/*if (work_group_index % (2 * stride) == 0 && work_group_index + stride < work_group_size) {*/
+			/*pad[work_group_index] += pad[work_group_index + stride];*/
+		/*}*/
+		/*stride *= 2;	*/
+		/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
+		 
+	/*}*/
+	/*float std = sqrt(pad[0]);*/
+
+	/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
+
+	/*for (uint k = global_data_index; k < global_data_index + work; k++) {*/
+		/*data[k] = (fabs(data[k] - mean) > threshold * std);*/
+	/*}*/
+
+
+/*}*/
+
+/*void GPUEnviroment::MaskRows(const cl::Buffer& data, cl::Buffer& mask, uint8_t mask_value, size_t m, size_t n, size_t local_size) {*/
+kernel 
+void mask_rows(global uchar *data, global uchar *mask, uchar mask_value, uint m, uint n) {
+	uint i = get_global_id(0);
+	if (i < m && mask[i] == 1) {
+		for (uint j = 0; j < n; j++) {
+			data[i * n + j] = mask_value;
+		}
+	}
+}
 
 
 
