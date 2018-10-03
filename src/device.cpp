@@ -17,6 +17,7 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <cassert>
 
 #include <CL/cl.hpp>
 
@@ -168,22 +169,50 @@ void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& 
 
 }
 
-
-void GPUEnviroment::Transpose(const cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
-	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
-	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
+//void GPUEnviroment::Transpose(const cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+	//size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
+	//size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
 	
+
+	//cl::NDRange local_range(local_size_m, local_size_n);
+	//cl::NDRange global_range(global_size_m, global_size_n);
+
+	//CHECK_CL(transpose.setArg(0, d_out));
+	//CHECK_CL(transpose.setArg(1, d_in));
+	//CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(m)));
+	//CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(n)));
+
+	//CHECK_CL(queue.enqueueNDRangeKernel(transpose, cl::NullRange, global_range, local_range));
+
+
+//}
+
+
+void GPUEnviroment::Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m) {
+	
+	MARK_TIME(mark);
+	// Must be square.
+	size_t local_size_n = tile_dim;
+	assert(tile_dim % local_size_m == 0);
+
+	size_t global_size_m = local_size_m * std::ceil((float) m / tile_dim);
+	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
 
 	cl::NDRange local_range(local_size_m, local_size_n);
 	cl::NDRange global_range(global_size_m, global_size_n);
 
+
 	CHECK_CL(transpose.setArg(0, d_out));
 	CHECK_CL(transpose.setArg(1, d_in));
-	CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(m)));
-	CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(n)));
+	CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(tile_dim)));
+	//CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(tile_dim_n)));
+	CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(m)));
+	CHECK_CL(transpose.setArg(4, static_cast<unsigned int>(n)));
+	CHECK_CL(transpose.setArg(5, tile_dim * tile_dim * sizeof(uint8_t), NULL));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(transpose, cl::NullRange, global_range, local_range));
 
+	ADD_TIME_SINCE_MARK(transpose_timer, mark);
 
 }
 

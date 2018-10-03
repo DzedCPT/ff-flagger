@@ -16,6 +16,9 @@
 #include <vector>
 #include <CL/cl.hpp>
 
+
+#include "timing.h"
+
 class GPUEnviroment {
 public:
 	
@@ -46,6 +49,10 @@ public:
 	// Util functions for handling GPU memory.
 	cl::Buffer InitBuffer(const cl_mem_flags mem_flag, const size_t size);
 
+	INIT_TIMER(transpose_timer);
+    INIT_MARK(mark);
+
+
 	void WriteToBuffer(void* host_mem, cl::Buffer& buffer, const size_t size);
 
 	void ReadFromBuffer(void* host_mem, cl::Buffer& buffer, const size_t size);
@@ -60,7 +67,10 @@ public:
 
 	void Downcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
 
-	void Transpose(const cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	//void Transpose( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	void Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m);
+
+	//void Transpose2( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim);
 
 	void EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 

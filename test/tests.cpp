@@ -7,6 +7,7 @@
 #include <functional>
 
 #include "device.h"
+#include "timing.h"
 //#include "smooth.h"
 //#include "band_threshold.h"
 //#include "sum_threshold.h"
@@ -22,8 +23,7 @@
 		if (x[i] != Approx(y[i]).margin(1e-6)) { \
 			REQUIRE(x[i] == Approx(y[i]).margin(1e-6)); \
 		} \
-	}
-
+	} 
 
 using namespace std;
 GPUEnviroment gpu;
@@ -47,9 +47,9 @@ int RandInt(int min, int max) {
 }
 
 void InitExperiment(int max_m, int max_n = 1, float min_val = -1000, float max_val = 1000) {
-	m = RandInt(1, max_m);
-	n = RandInt(1, max_n);
-	local_size = RandInt(0, 1000);
+	m = 100000;//RandInt(1, max_m);
+	n = 100000;//RandInt(1, max_n);
+	local_size = RandInt(50, 1000);
 	uni = std::uniform_int_distribution<int>(min_val, max_val);
 	vec.resize(m * n);
 	results.resize(m * n);
@@ -161,24 +161,46 @@ TEST_CASE( "Test Flag rows.", "[row_flag], [rfi]" ) {
 
 
 TEST_CASE( "Test GPU Transpose.", "[transpose], [kernel]" ) {
+	//INIT_TIMER(timer);
+    //INIT_MARK(mark);
+
+
+	InitExperiment(1000, 1000, 0, 256);
 	for (size_t test = 0; test < 10; test++) {
-		InitExperiment(1000, 1000, 0, 256);
-		std::vector<int> correct(vec.size());
+		//InitExperiment(1000, 1000, 0, 10);
+		//std::vector<int> correct(vec.size());
 
 		// Sequential Implementation.
-		for (size_t i = 0; i < m; i++) {
-			for (size_t j = 0; j < n; j++) {
-				correct[j * m + i]	= vec[i * n + j];
+		//for (size_t i = 0; i < m; i++) {
+			//for (size_t j = 0; j < n; j++) {
+				//correct[j * m + i]	= vec[i * n + j];
 			
-			}	
-		}
-
+			//}	
+		//}
+		//for (size_t i =0; i < n;i++) {
+			//for (size_t j = 0; j < m; j++) {
+				//cout << (int) correct[i * m + j] << ",";	
+			//}
+			//cout << endl;
+		//}
+		cout << "============" << endl;
 		// GPU.
-		gpu.Transpose(d_out, d_in, m, n, 25, 25);
+		//MARK_TIME(mark);
+		gpu.Transpose(d_out, d_in, m, n, 50, 10);
+		//ADD_TIME_SINCE_MARK(timer, mark);
 		gpu.ReadFromBuffer(results.data(), d_out, m * n * sizeof(uint8_t));
 
-		CHECK_VEC_EQUAL(correct, results);
+		//for (size_t i =0; i < n;i++) {
+			//for (size_t j = 0; j < m; j++) {
+				//cout << (int) results[i * m + j] << ",";	
+			//}
+			//cout << endl;
+		//}
+
+		//CHECK_VEC_EQUAL(correct, results);
 	}
+    //PRINT_TIMER(timer);
+    PRINT_TIMER(gpu.transpose_timer);
 }
 
 
