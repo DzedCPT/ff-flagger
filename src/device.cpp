@@ -80,6 +80,7 @@ GPUEnviroment::GPUEnviroment (void) {
 	transpose = cl::Kernel(program, "transpose", &error_code); CHECK_CL(error_code);
 	flag_rows = cl::Kernel(program, "flag_rows", &error_code); CHECK_CL(error_code);
 	edge_threshold = cl::Kernel(program, "edge_threshold", &error_code); CHECK_CL(error_code);
+	row_medians = cl::Kernel(program, "row_medians", &error_code); CHECK_CL(error_code);
 
 }
 
@@ -104,18 +105,19 @@ void GPUEnviroment::CopyBuffer (const cl::Buffer& src, cl::Buffer& dest, size_t 
 	CHECK_CL(queue.enqueueCopyBuffer(src, dest, 0, 0, size));
 }
 
-void GPUEnviroment::MaskRows(const cl::Buffer& data, cl::Buffer& mask, uint8_t mask_value, size_t m, size_t n, size_t local_size) {
+void GPUEnviroment::MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffer& medians, size_t m, size_t n, size_t local_size) {
+	MARK_TIME(mark);
 	size_t global_size = local_size * std::ceil((float) m / local_size);
 
-//void mask_rows(global uchar *data, global uchar *mask, uchar mask_value, uint m, uint n) {
 	CHECK_CL(mask_rows.setArg(0, data));
 	CHECK_CL(mask_rows.setArg(1, mask));
-	CHECK_CL(mask_rows.setArg(2, static_cast<unsigned char>(mask_value)));
+	CHECK_CL(mask_rows.setArg(2, medians));
 	CHECK_CL(mask_rows.setArg(3, static_cast<unsigned int>(m)));
 	CHECK_CL(mask_rows.setArg(4, static_cast<unsigned int>(n)));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(mask_rows, cl::NullRange, global_size, local_size));
 
+	ADD_TIME_SINCE_MARK(mask_rows_timer, mark);
 
 }
 
@@ -169,52 +171,54 @@ void GPUEnviroment::Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& 
 
 }
 
-//void GPUEnviroment::Transpose(const cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
-	//size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
-	//size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
-	
-
-	//cl::NDRange local_range(local_size_m, local_size_n);
-	//cl::NDRange global_range(global_size_m, global_size_n);
-
-	//CHECK_CL(transpose.setArg(0, d_out));
-	//CHECK_CL(transpose.setArg(1, d_in));
-	//CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(m)));
-	//CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(n)));
-
-	//CHECK_CL(queue.enqueueNDRangeKernel(transpose, cl::NullRange, global_range, local_range));
-
-
-//}
-
-
-void GPUEnviroment::Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m) {
-	
+void GPUEnviroment::Transpose( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	MARK_TIME(mark);
-	// Must be square.
-	size_t local_size_n = tile_dim;
-	assert(tile_dim % local_size_m == 0);
-
-	size_t global_size_m = local_size_m * std::ceil((float) m / tile_dim);
+	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
 	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
+	
 
 	cl::NDRange local_range(local_size_m, local_size_n);
 	cl::NDRange global_range(global_size_m, global_size_n);
 
-
 	CHECK_CL(transpose.setArg(0, d_out));
 	CHECK_CL(transpose.setArg(1, d_in));
-	CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(tile_dim)));
-	//CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(tile_dim_n)));
-	CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(m)));
-	CHECK_CL(transpose.setArg(4, static_cast<unsigned int>(n)));
-	CHECK_CL(transpose.setArg(5, tile_dim * tile_dim * sizeof(uint8_t), NULL));
+	CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(m)));
+	CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(n)));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(transpose, cl::NullRange, global_range, local_range));
 
-	ADD_TIME_SINCE_MARK(transpose_timer, mark);
 
+	ADD_TIME_SINCE_MARK(transpose_timer, mark);
 }
+
+
+//void GPUEnviroment::Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m) {
+	
+	//MARK_TIME(mark);
+	//// Must be square.
+	//size_t local_size_n = tile_dim;
+	//assert(tile_dim % local_size_m == 0);
+
+	//size_t global_size_m = local_size_m * std::ceil((float) m / tile_dim);
+	//size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
+
+	//cl::NDRange local_range(local_size_m, local_size_n);
+	//cl::NDRange global_range(global_size_m, global_size_n);
+
+
+	//CHECK_CL(transpose.setArg(0, d_out));
+	//CHECK_CL(transpose.setArg(1, d_in));
+	//CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(tile_dim)));
+	////CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(tile_dim_n)));
+	//CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(m)));
+	//CHECK_CL(transpose.setArg(4, static_cast<unsigned int>(n)));
+	//CHECK_CL(transpose.setArg(5, tile_dim * tile_dim * sizeof(uint8_t), NULL));
+
+	//CHECK_CL(queue.enqueueNDRangeKernel(transpose, cl::NullRange, global_range, local_range));
+
+	//ADD_TIME_SINCE_MARK(transpose_timer, mark);
+
+//}
 
 
 void GPUEnviroment::EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
@@ -236,6 +240,23 @@ void GPUEnviroment::EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer
 
 
 }
+
+void GPUEnviroment::ComputeRowMedians(cl::Buffer& medians, cl::Buffer& d_in, size_t m, size_t n, size_t local_size) {
+	MARK_TIME(mark);
+	size_t global_size = local_size * std::ceil((float) m / local_size);
+
+	CHECK_CL(row_medians.setArg(0, medians));
+	CHECK_CL(row_medians.setArg(1, d_in));
+	CHECK_CL(row_medians.setArg(2, static_cast<unsigned int>(m)));
+	CHECK_CL(row_medians.setArg(3, static_cast<unsigned int>(n)));
+
+	CHECK_CL(queue.enqueueNDRangeKernel(row_medians, cl::NullRange, global_size, local_size));
+
+
+	ADD_TIME_SINCE_MARK(medians_timer, mark);
+
+}
+
 
 void GPUEnviroment::MADRows(const cl::Buffer& mads, cl::Buffer& medians, cl::Buffer& d_in, size_t m, size_t n, size_t local_size) {
 	//size_t global_size_m = local_size_m * std::ceil((float) m / (local_size_m * window_size));
@@ -314,6 +335,7 @@ float GPUEnviroment::Reduce(const cl::Buffer d_in, size_t drop_out, size_t len, 
 
 //void GPUEnviroment::Grubb(const cl::Buffer data, size_t len, size_t size, float threshold, size_t local_size) {
 void GPUEnviroment::Grubb(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size) {
+	MARK_TIME(mark);
 	
 	size_t global_size = local_size * std::ceil((float) len / (local_size * work_per_thread));
 
@@ -328,6 +350,7 @@ void GPUEnviroment::Grubb(const cl::Buffer data, size_t len, size_t work_per_thr
 	CHECK_CL(grubb.setArg(5, local_size * sizeof(float), NULL));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(grubb, cl::NullRange, global_size, local_size));
+	ADD_TIME_SINCE_MARK(grubb_timer, mark);
 
 }
 

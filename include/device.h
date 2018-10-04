@@ -25,6 +25,7 @@ public:
 	// GPU kernels which this class provides a wrapper for.
 	cl::Kernel mask;
 	cl::Kernel grubb;
+	cl::Kernel row_medians;
 	cl::Kernel mask_rows;
 	cl::Kernel upcast;
 	cl::Kernel downcast;
@@ -49,9 +50,20 @@ public:
 	// Util functions for handling GPU memory.
 	cl::Buffer InitBuffer(const cl_mem_flags mem_flag, const size_t size);
 
-	INIT_TIMER(transpose_timer);
     INIT_MARK(mark);
+	INIT_TIMER(transpose_timer);
+	INIT_TIMER(medians_timer);
+	INIT_TIMER(grubb_timer);
+	INIT_TIMER(mask_rows_timer);
 
+	void PrintKernelTimers() {
+		PRINT_TIMER(transpose_timer);
+		PRINT_TIMER(medians_timer);
+		PRINT_TIMER(grubb_timer);
+		PRINT_TIMER(mask_rows_timer);
+
+
+	}
 
 	void WriteToBuffer(void* host_mem, cl::Buffer& buffer, const size_t size);
 
@@ -61,20 +73,23 @@ public:
 
 	void Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, uint8_t mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 
-	void MaskRows(const cl::Buffer& data, cl::Buffer& mask, uint8_t mask_value, size_t m, size_t n, size_t local_size);
+	void MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffer& medians, size_t m, size_t n, size_t local_size);
+	//void MaskRows(const cl::Buffer& data, cl::Buffer& mask, uint8_t mask_value, size_t m, size_t n, size_t local_size);
 
 	void Upcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
 
 	void Downcast(const cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
 
-	//void Transpose( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
-	void Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m);
+	void Transpose( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	//void Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m);
 
 	//void Transpose2( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim);
 
 	void EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 
 	void MADRows(const cl::Buffer& mads, cl::Buffer& medians, cl::Buffer& d_in, size_t m, size_t n, size_t local_size);
+
+	void ComputeRowMedians(cl::Buffer& medians, cl::Buffer& d_in, size_t m, size_t n, size_t local_size);
 
 	void FlagRows(const cl::Buffer& mask, float row_sum_threshold, size_t m, size_t n, size_t local_size);
 

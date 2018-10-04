@@ -47,8 +47,8 @@ int RandInt(int min, int max) {
 }
 
 void InitExperiment(int max_m, int max_n = 1, float min_val = -1000, float max_val = 1000) {
-	m = 100000;//RandInt(1, max_m);
-	n = 100000;//RandInt(1, max_n);
+	m = 1000;//RandInt(1, max_m);
+	n = 1000;//RandInt(1, max_n);
 	local_size = RandInt(50, 1000);
 	uni = std::uniform_int_distribution<int>(min_val, max_val);
 	vec.resize(m * n);
@@ -120,11 +120,13 @@ TEST_CASE( "Test Flag rows.", "[row_flag], [rfi]" ) {
 		InitExperiment(1000, 1000, 0, 255);
 		std::vector<uint8_t> mask(m);
 		for (auto& v: mask) { v = (0.5 < std::uniform_real_distribution<>(0, 1)(rng)); } ;
+		std::vector<uint8_t> medians(n);
+		for (auto& v: medians) { v = RandInt(0, 255); } ;
 
 		for (size_t i = 0; i < m; i++) {
 			if (mask[i] == 1) {
 				for (size_t j = 0; j < n; j++) {
-					vec[i * n + j] = 0;
+					vec[i * n + j] = medians[j];
 				}	
 			}
 		}
@@ -132,7 +134,9 @@ TEST_CASE( "Test Flag rows.", "[row_flag], [rfi]" ) {
 		// GPU.	
 		cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
 		gpu.WriteToBuffer(mask.data(), d_mask, m * sizeof(uint8_t));
-		gpu.MaskRows(d_in, d_mask, 0,  m, n, local_size);
+		cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, n * sizeof(uint8_t));
+		gpu.WriteToBuffer(medians.data(), d_medians, n * sizeof(uint8_t));
+		gpu.MaskRows(d_in, d_mask, d_medians,  m, n, local_size);
 		
 		gpu.ReadFromBuffer(results.data(), d_in, m * n *sizeof(uint8_t));
 
@@ -165,24 +169,18 @@ TEST_CASE( "Test GPU Transpose.", "[transpose], [kernel]" ) {
     //INIT_MARK(mark);
 
 
-	InitExperiment(1000, 1000, 0, 256);
+	//InitExperiment(1000, 1000, 0, 256);
 	for (size_t test = 0; test < 10; test++) {
-		//InitExperiment(1000, 1000, 0, 10);
-		//std::vector<int> correct(vec.size());
+		InitExperiment(1000, 1000, 0, 10);
+		std::vector<int> correct(vec.size());
 
 		// Sequential Implementation.
-		//for (size_t i = 0; i < m; i++) {
-			//for (size_t j = 0; j < n; j++) {
-				//correct[j * m + i]	= vec[i * n + j];
+		for (size_t i = 0; i < m; i++) {
+			for (size_t j = 0; j < n; j++) {
+				correct[j * m + i]	= vec[i * n + j];
 			
-			//}	
-		//}
-		//for (size_t i =0; i < n;i++) {
-			//for (size_t j = 0; j < m; j++) {
-				//cout << (int) correct[i * m + j] << ",";	
-			//}
-			//cout << endl;
-		//}
+			}	
+		}
 		cout << "============" << endl;
 		// GPU.
 		//MARK_TIME(mark);
@@ -197,10 +195,10 @@ TEST_CASE( "Test GPU Transpose.", "[transpose], [kernel]" ) {
 			//cout << endl;
 		//}
 
-		//CHECK_VEC_EQUAL(correct, results);
+		CHECK_VEC_EQUAL(correct, results);
 	}
     //PRINT_TIMER(timer);
-    PRINT_TIMER(gpu.transpose_timer);
+    //PRINT_TIMER(gpu.transpose_timer);
 }
 
 
@@ -277,6 +275,36 @@ TEST_CASE( "Test EdgeThreshold.", "[edge_threshold], [rfi]" ) {
 	}
 
 }
+
+
+TEST_CASE( "Test that median of each Row is correctly calculated..", "[median], [rfi]" ) {
+
+	uint8_t median;
+
+	for (size_t test = 0; test < 10; test++) {
+		InitExperiment(1000, 1000, 0, 255);
+
+		// Sequential Implementation.
+		std::vector<uint8_t> temp(vec);
+		std::vector<uint8_t> cpu_medians(m);
+		
+		for (size_t i = 0; i < m; i++) {
+			std::nth_element(temp.begin() + i * n, temp.begin() + i * n + n/2, temp.begin() + i * n + n);
+			median = temp[i * n + n/2];
+			cpu_medians[i] = median;
+		}
+
+		// Run on GPU.
+		cl::Buffer b_gpu_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
+		gpu.ComputeRowMedians(b_gpu_medians, d_in, m, n, local_size);
+		std::vector<uint8_t> gpu_medians(m);
+		gpu.ReadFromBuffer(gpu_medians.data(), b_gpu_medians, m * sizeof(uint8_t));
+
+	
+		CHECK_VEC_EQUAL(cpu_medians, gpu_medians);
+	}
+}
+
 
 
 

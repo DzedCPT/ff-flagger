@@ -31,81 +31,81 @@ void downcast(global uchar *d_out, const global float *d_in, uint len) {
 	}
 }
 
-kernel
-void transpose(global uchar *d_out, const global uchar *d_in, uint tile_dim, uint m, uint n, local uchar *tile) {
-	/*uint tile_dim = tile_dim_n;*/
-	/*uint x = get_group_id(0) * tile_dim_m + get_local_id(0);*/
-	/*uint x = get_global_id(0);*/
-	/*uint y = get_group_id(1) * tile_dim_n + get_local_id(1);*/
-	uint group_x = get_group_id(0);
-	uint group_y = get_group_id(1);
-	uint x = group_x * tile_dim + get_local_id(0);
-	/*uint y = group_x * tile_dim + get_local_id(0);*/
-	uint y = get_global_id(1);
-	/*uint work_group_m = get_local_size(0);*/
-	/*uint work_group_n = get_local_size(1);*/
-	/*if (x >= m || y >=n ) {*/
-		/*return;*/
+/*kernel*/
+/*void transpose(global uchar *d_out, const global uchar *d_in, uint tile_dim, uint m, uint n, local uchar *tile) {*/
+	/*[>uint tile_dim = tile_dim_n;<]*/
+	/*[>uint x = get_group_id(0) * tile_dim_m + get_local_id(0);<]*/
+	/*[>uint x = get_global_id(0);<]*/
+	/*[>uint y = get_group_id(1) * tile_dim_n + get_local_id(1);<]*/
+	/*uint group_x = get_group_id(0);*/
+	/*uint group_y = get_group_id(1);*/
+	/*uint x = group_x * tile_dim + get_local_id(0);*/
+	/*[>uint y = group_x * tile_dim + get_local_id(0);<]*/
+	/*uint y = get_global_id(1);*/
+	/*[>uint work_group_m = get_local_size(0);<]*/
+	/*[>uint work_group_n = get_local_size(1);<]*/
+	/*[>if (x >= m || y >=n ) {<]*/
+		/*[>return;<]*/
+	/*[>}<]*/
+	/*for (uint i = 0; i < tile_dim; i += get_local_size(0)) {*/
+		/*tile[get_local_id(1) * tile_dim + (get_local_id(0)+i)] = d_in[(x + i) * n + y];*/
 	/*}*/
-	for (uint i = 0; i < tile_dim; i += get_local_size(0)) {
-		tile[get_local_id(1) * tile_dim + (get_local_id(0)+i)] = d_in[(x + i) * n + y];
-	}
-	barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
+	/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
 	
-	/*x = get_global_id(1);*/
-	/*x = get_group_id(1) * tile_dim_n + get_local_id(0);*/
-	/*y = get_group_id(0) * tile_dim_m + get_local_id(1);*/
+	/*[>x = get_global_id(1);<]*/
+	/*[>x = get_group_id(1) * tile_dim_n + get_local_id(0);<]*/
+	/*[>y = get_group_id(0) * tile_dim_m + get_local_id(1);<]*/
 
-	/*if (get_global_id(0) == 0 && get_global_id(1) == 0) {*/
-	/*if (get_local_id(0) == 0 && get_local_id(1) == 0 && get_group_id(0) == get_num_groups(0) - 1) {*/
-		/*d_out[x * n + y] = y;*/
-		/*for (uint i = 0; i < tile_dim_m; i ++) {*/
-			/*for (uint j = 0; j < tile_dim_m; j++) {*/
-				/*d_out[i * n + j] = tile[i * tile_dim_n + j];*/
+	/*[>if (get_global_id(0) == 0 && get_global_id(1) == 0) {<]*/
+	/*[>if (get_local_id(0) == 0 && get_local_id(1) == 0 && get_group_id(0) == get_num_groups(0) - 1) {<]*/
+		/*[>d_out[x * n + y] = y;<]*/
+		/*[>for (uint i = 0; i < tile_dim_m; i ++) {<]*/
+			/*[>for (uint j = 0; j < tile_dim_m; j++) {<]*/
+				/*[>d_out[i * n + j] = tile[i * tile_dim_n + j];<]*/
 
-			/*}*/
+			/*[>}<]*/
+		/*[>}<]*/
+		/*[>uint group_x = get_group_id(0);<]*/
+		/*[>uint group_y = get_group_id(1);<]*/
+		/*[>x = group_x * tile_dim_m;<]*/
+		/*[>y = group_y * tile_dim_m;<]*/
+		/*[>d_out[y * m + x] = get_group_id(0) ;<]*/
+		/*[>d_out[(y - 1) * m + x] = get_group_id(1);<]*/
+	/*[>}<]*/
+	/*group_x = get_group_id(1);*/
+	/*group_y = get_group_id(0);*/
+	/*x = group_x * tile_dim + get_local_id(0);*/
+	/*y = group_y * tile_dim + get_local_id(1);*/
+	/*[>y = get_global_id(1);<]*/
+	/*[>if (x >= n || y >=m ) {<]*/
+		/*[>return;<]*/
+	/*[>}<]*/
+
+	/*for (uint i = 0; i < tile_dim; i += get_local_size(0)) {*/
+		/*if (x + i >= n || y >=m ) {*/
+			/*return;*/
 		/*}*/
-		/*uint group_x = get_group_id(0);*/
-		/*uint group_y = get_group_id(1);*/
-		/*x = group_x * tile_dim_m;*/
-		/*y = group_y * tile_dim_m;*/
-		/*d_out[y * m + x] = get_group_id(0) ;*/
-		/*d_out[(y - 1) * m + x] = get_group_id(1);*/
-	/*}*/
-	group_x = get_group_id(1);
-	group_y = get_group_id(0);
-	x = group_x * tile_dim + get_local_id(0);
-	y = group_y * tile_dim + get_local_id(1);
-	/*y = get_global_id(1);*/
-	/*if (x >= n || y >=m ) {*/
-		/*return;*/
+
+		/*d_out[(x + i) * m + y] = tile[(get_local_id(0) + i) * tile_dim  + get_local_id(1)];*/
 	/*}*/
 
-	for (uint i = 0; i < tile_dim; i += get_local_size(0)) {
-		if (x + i >= n || y >=m ) {
-			return;
-		}
+	/*[>if (get_group_id(0) == 2 && get_group_id(1) == 0) {<]*/
+		/*[>d_out[get_local_id(0) * m + get_local_id(1)] = 99 + get_local_id(0);<]*/
 
-		d_out[(x + i) * m + y] = tile[(get_local_id(0) + i) * tile_dim  + get_local_id(1)];
-	}
+	/*[>}<]*/
 
-	/*if (get_group_id(0) == 2 && get_group_id(1) == 0) {*/
-		/*d_out[get_local_id(0) * m + get_local_id(1)] = 99 + get_local_id(0);*/
-
-	/*}*/
-
-}
+/*}*/
 
 /*void transpose(global uchar *d_out, const global uchar *d_in, uint m, uint n) {*/
 
-/*kernel*/
-/*void transpose(global uchar *d_out, const global uchar *d_in, uint tile_dim, uint m, uint n, local uchar *tile) {*/
-	/*uint i = get_global_id(0);*/
-	/*uint j = get_global_id(1);*/
-	/*if (i < m && j < n) {*/
-		/*d_out[j * m + i] = d_in[i * n + j];*/
-	/*}*/
-/*}*/
+kernel
+void transpose(global uchar *d_out, const global uchar *d_in, uint m, uint n) {
+	uint i = get_global_id(0);
+	uint j = get_global_id(1);
+	if (i < m && j < n) {
+		d_out[j * m + i] = d_in[i * n + j];
+	}
+}
 
 
 kernel 
@@ -247,11 +247,11 @@ void grubb(global uchar *data, uint len, uint work_per_thread, float threshold, 
 
 /*void GPUEnviroment::MaskRows(const cl::Buffer& data, cl::Buffer& mask, uint8_t mask_value, size_t m, size_t n, size_t local_size) {*/
 kernel 
-void mask_rows(global uchar *data, global uchar *mask, uchar mask_value, uint m, uint n) {
+void mask_rows(global uchar *data, global uchar *mask, global uchar *medians, uint m, uint n) {
 	uint i = get_global_id(0);
 	if (i < m && mask[i] == 1) {
 		for (uint j = 0; j < n; j++) {
-			data[i * n + j] = mask_value;
+			data[i * n + j] = medians[j];
 		}
 	}
 }
@@ -303,6 +303,37 @@ void flag_rows(global float *mask, float row_sum_threshold, uint m, uint n) {
 
 }
 	
+kernel 
+void row_medians(global uchar *medians, global uchar *d_in, uint m, uint n) {
+	int i = get_global_id(0);
+
+	if (i >= m) { 
+		return;
+	}
+	uint xx[256];
+	for (int k = 0; k < 256; k++) {
+		xx[k] = 0;
+	}
+
+
+	for (int j = 0; j < n; j++) {
+		uint cc = d_in[i * n + j];
+		xx[cc] += 1;
+	}
+
+	uint count = 0;
+	uchar median;
+	for (uint k = 0; k < 256; k++) {
+		count += xx[k];
+		if (count > n / 2) {
+			median = k;
+			medians[i] = median;
+			break;
+		
+		}
+	}
+	
+}
 kernel 
 void mad_rows(global uchar *mads, global uchar *medians, global uchar *d_in, uint m, uint n) {
 	int i = get_global_id(0);
