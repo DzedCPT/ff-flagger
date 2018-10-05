@@ -30,11 +30,11 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
 
 		MARK_TIME(mark);
 		gpu.Transpose(uint_buffer_T, uint_buffer, m, n, 25, 25);
-		gpu.ComputeRowMedians(freq_medians, uint_buffer_T, n, m, 500);
+		gpu.ComputeMedians(freq_medians, uint_buffer_T, n, m, 500);
 		//gpu.queue.enqueueFillBuffer(row_mask, 0, 0, m * sizeof(uint8_t));
 
-		gpu.ComputeRowMedians(bin_medians, uint_buffer, m, n, 500);
-		gpu.Grubb(bin_medians, m, 5, threshold, 1000);
+		gpu.ComputeMedians(bin_medians, uint_buffer, m, n, 500);
+		gpu.OutlierDetection(bin_medians, m, 5, threshold, 1000);
 		gpu.MaskRows(uint_buffer, bin_medians, freq_medians, m, n, 500);
 
 		ADD_TIME_SINCE_MARK(timer, mark);

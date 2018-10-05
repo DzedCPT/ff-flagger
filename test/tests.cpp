@@ -47,8 +47,8 @@ int RandInt(int min, int max) {
 }
 
 void InitExperiment(int max_m, int max_n = 1, float min_val = -1000, float max_val = 1000) {
-	m = 1000;//RandInt(1, max_m);
-	n = 1000;//RandInt(1, max_n);
+	m = RandInt(1, max_m);
+	n = RandInt(1, max_n);
 	local_size = RandInt(50, 1000);
 	uni = std::uniform_int_distribution<int>(min_val, max_val);
 	vec.resize(m * n);
@@ -105,7 +105,7 @@ TEST_CASE( "Test GPU Reduce.", "[grubb], [kernel]" ) {
 			
 		}
 
-		gpu.Grubb(d_in, m, work_per_thread, 1, local_size);
+		gpu.OutlierDetection(d_in, m, work_per_thread, 1, local_size);
 
 		gpu.ReadFromBuffer(results.data(), d_in, m * sizeof(uint8_t));
 		
@@ -225,7 +225,7 @@ TEST_CASE( "Test Mask.", "[mask], [kernel]" ) {
 		gpu.WriteToBuffer(mask.data(), d_mask, m * n * sizeof(uint8_t));
 		cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
 		gpu.WriteToBuffer(medians.data(), d_medians, m * sizeof(uint8_t));
-		gpu.Mask(d_out, d_in, d_mask, d_medians,  m, n, 25, 25);
+		gpu.ReplaceRFI(d_out, d_in, d_mask, d_medians,  m, n, 25, 25);
 		gpu.ReadFromBuffer(results.data(), d_out, m * n *sizeof(uint8_t));
 
 		CHECK_VEC_EQUAL(vec, results);
@@ -300,7 +300,7 @@ TEST_CASE( "Test that median of each Row is correctly calculated..", "[median], 
 
 		// Run on GPU.
 		cl::Buffer b_gpu_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
-		gpu.ComputeRowMedians(b_gpu_medians, d_in, m, n, local_size);
+		gpu.ComputeMedians(b_gpu_medians, d_in, m, n, local_size);
 		std::vector<uint8_t> gpu_medians(m);
 		gpu.ReadFromBuffer(gpu_medians.data(), b_gpu_medians, m * sizeof(uint8_t));
 
@@ -335,7 +335,7 @@ TEST_CASE( "Test that MAD of each Row is correctly calculated..", "[mad], [rfi]"
 
 		// Run on GPU.
 		cl::Buffer b_gpu_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
-		gpu.MADRows(d_out, b_gpu_medians, d_in, m, n, local_size);
+		gpu.ComputeMads(d_out, b_gpu_medians, d_in, m, n, local_size);
 		std::vector<uint8_t> gpu_mads(m);
 		std::vector<uint8_t> gpu_medians(m);
 		gpu.ReadFromBuffer(gpu_mads.data(), d_out, m * sizeof(uint8_t));

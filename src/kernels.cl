@@ -10,24 +10,15 @@
 
 
 kernel
-void mask(global uchar *d_out, const global uchar *d_in, const global uchar* mask, global uchar* freq_medians, uint m, uint n) {
-/*void mask(global uchar *d_out, const global uchar *d_in, const global uchar* mask, uint mask_value, uint m, uint n) {*/
+void replace_rfi(global uchar *clean_data, global uchar *data, global uchar* rfi_mask, global uchar* replace_values, uint m, uint n) {
 	uint i = get_global_id(0);
 	uint j = get_global_id(1);
 	if (i < m && j < n) {
-		//d_out[i * n + j] = mask[i *n + j] == 1 ? 0 : d_in[i * n + j];
-		    d_out[i * n + j] = mask[i *n + j] == 1 ? freq_medians[i] : d_in[i * n + j];
+		clean_data[i * n + j] = rfi_mask[i * n + j] == 1 ? replace_values[i] : data[i * n + j];
 	}
 
 }
 
-kernel
-void downcast(global uchar *d_out, const global float *d_in, uint len) {
-	uint i = get_global_id(0);
-	if (i < len) {
-		d_out[i] = d_in[i];
-	}
-}
 
 /*kernel*/
 /*void transpose(global uchar *d_out, const global uchar *d_in, uint tile_dim, uint m, uint n, local uchar *tile) {*/
@@ -107,7 +98,7 @@ void transpose(global uchar *d_out, const global uchar *d_in, uint m, uint n) {
 
 
 kernel 
-void grubb(global uchar *data, uint len, uint work_per_thread, float threshold, local float *local_mem, local float *pad) { 
+void detect_outliers(global uchar *data, uint len, uint work_per_thread, float threshold, local float *local_mem, local float *pad) { 
 	uint global_data_index = get_global_id(0) * work_per_thread;
 	uint local_data_index = get_local_id(0) * work_per_thread;
 	uint work_group_index = get_local_id(0);
@@ -264,16 +255,6 @@ void constant_row_mask(global uchar *data, global uchar *mask, uint m, uint n) {
 	}
 }
 
-
-
-kernel 
-void upcast(global float *d_out, const global uchar *d_in, uint len) {
-	uint i = get_global_id(0);
-	if (i < len) {
-		d_out[i] = d_in[i];
-	}
-}
-
 kernel 
 void edge_threshold(global uchar *mask, global uchar* mads, global uchar *d_in, float threshold, uint m, uint n) {
 	int i = get_global_id(0);
@@ -294,7 +275,7 @@ void edge_threshold(global uchar *mask, global uchar* mads, global uchar *d_in, 
 	
 	
 kernel 
-void row_medians(global uchar *medians, global uchar *d_in, uint m, uint n) {
+void compute_medians(global uchar *medians, global uchar *data, uint m, uint n) {
 	int i = get_global_id(0);
 
 	if (i >= m) { 
@@ -307,7 +288,7 @@ void row_medians(global uchar *medians, global uchar *d_in, uint m, uint n) {
 
 
 	for (int j = 0; j < n; j++) {
-		uint cc = d_in[i * n + j];
+		uint cc = data[i * n + j];
 		xx[cc] += 1;
 	}
 
@@ -324,8 +305,10 @@ void row_medians(global uchar *medians, global uchar *d_in, uint m, uint n) {
 	}
 	
 }
+
+
 kernel 
-void mad_rows(global uchar *mads, global uchar *medians, global uchar *d_in, uint m, uint n) {
+void compute_mads(global uchar *mads, global uchar *medians, global uchar *data, uint m, uint n) {
 	int i = get_global_id(0);
 
 	if (i >= m) { 
@@ -338,7 +321,7 @@ void mad_rows(global uchar *mads, global uchar *medians, global uchar *d_in, uin
 
 
 	for (int j = 0; j < n; j++) {
-		uint cc = d_in[i * n + j];
+		uint cc = data[i * n + j];
 		xx[cc] += 1;
 	}
 
@@ -358,7 +341,7 @@ void mad_rows(global uchar *mads, global uchar *medians, global uchar *d_in, uin
 	}
 
 	for (int j = 0; j < n; j++) {
-		uint cc = abs(d_in[i * n + j] - median);
+		uint cc = abs(data[i * n + j] - median);
 		xx[cc] += 1;
 	}
 

@@ -6,6 +6,15 @@
 #include "device.h"
 #include <CL/cl.hpp>
 
+#include <sys/time.h>
+typedef unsigned long long timestamp_t;
+timestamp_t get_timestamp () {
+	  struct timeval now;
+	  gettimeofday (&now, NULL);
+	  return  now.tv_usec + (timestamp_t)now.tv_sec * 1000000;
+}
+
+
 void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& out_fil_file, float threshold, float row_threshold, const size_t nbins, float total_time = 0) {
 	std::vector<uint8_t> spectra;
 	size_t m = nbins;
@@ -26,6 +35,7 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
 
     in_fil_file.nbins_per_block = nbins;
     total_time = (total_time != 0) ? total_time : in_fil_file.nbins * in_fil_file.header.tsamp;
+	double secs = 0;
     while(in_fil_file.tellg() < total_time) {
 
 		// Read in the data.
@@ -33,25 +43,28 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
 		gpu.WriteToBuffer(spectra.data(), uint_buffer, spectra.size() * sizeof(uint8_t));
 
 		MARK_TIME(mark);
+		timestamp_t t1 = get_timestamp();
 		gpu.queue.enqueueFillBuffer(mask, 0, 0, n * m * sizeof(uint8_t));
 
-		gpu.MADRows(time_mads, time_medians, uint_buffer, m, n, 500);
+		gpu.ComputeMads(time_mads, time_medians, uint_buffer, m, n, 500);
 		gpu.EdgeThreshold(mask, time_mads, uint_buffer, threshold, m, n, 12, 12);
-		gpu.Grubb(time_medians, m, 5, threshold, 1000);
+		gpu.OutlierDetection(time_medians, m, 5, threshold, 1000);
 		gpu.ConstantRowMask(mask, time_medians, m, n, 500);
 
 		gpu.Transpose(uint_buffer_T, uint_buffer, m, n, 12, 12);
 		gpu.Transpose(mask_T, mask, m, n, 12, 12);
 
-		gpu.MADRows(freq_mads, freq_medians, uint_buffer_T, n, m, 500);
+		gpu.ComputeMads(freq_mads, freq_medians, uint_buffer_T, n, m, 500);
 		gpu.EdgeThreshold(mask_T, freq_mads, uint_buffer_T, threshold, n, m, 12, 12);
 
-		gpu.Mask(uint_buffer_T, uint_buffer_T, mask_T, freq_medians, m, n, 12, 12);
+		gpu.ReplaceRFI(uint_buffer_T, uint_buffer_T, mask_T, freq_medians, m, n, 12, 12);
 
 		gpu.Transpose(uint_buffer, uint_buffer_T, n, m, 12, 12);
 		
 
 		ADD_TIME_SINCE_MARK(timer, mark);
+		timestamp_t t2 = get_timestamp();
+		secs += (t2 - t1) / 1000000.0L;
 		gpu.ReadFromBuffer(spectra.data(), uint_buffer, spectra.size() * sizeof(uint8_t));
 
 
@@ -61,6 +74,7 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
                   << std::min(in_fil_file.tellg() / total_time, (float) 1.0) * 100
                   << " % " << std::flush;
     }
+	std::cout << secs << std::endl;
     std::cout << std::endl;
 
     PRINT_TIMER(timer);
