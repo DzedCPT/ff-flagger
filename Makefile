@@ -19,11 +19,12 @@ DAS := prun -np 1 -native '-C TitanX --gres=gpu:1'
 make: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(SRC_DIR)/main.cpp -o fflagger
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(SRC_DIR)/sim_main.cpp -o sim_fflagger
-	$(DAS) ./sim_fflagger -i ~/real.fil -o ~/del.fil
+	$(DAS) ./fflagger -i ~/real.fil -o ~/del.fil
+	rm -f ~/del.fil
 
 test: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(TEST_DIR)/tests.cpp -o $(BUILD_DIR)/tests
-	$(DAS) $(BUILD_DIR)/tests [transpose]
+	$(DAS) $(BUILD_DIR)/tests [mask]
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) -c $<  -o $@

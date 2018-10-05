@@ -10,15 +10,13 @@
 
 
 kernel
-void mask(global uchar *d_out, const global uchar *d_in, const global uchar* mask, uint mask_value, uint m, uint n) {
+void mask(global uchar *d_out, const global uchar *d_in, const global uchar* mask, global uchar* freq_medians, uint m, uint n) {
+/*void mask(global uchar *d_out, const global uchar *d_in, const global uchar* mask, uint mask_value, uint m, uint n) {*/
 	uint i = get_global_id(0);
 	uint j = get_global_id(1);
 	if (i < m && j < n) {
 		//d_out[i * n + j] = mask[i *n + j] == 1 ? 0 : d_in[i * n + j];
-        if (d_in[i * n + j] != 0) {
-		    d_out[i * n + j] = mask[i *n + j] == 1 ? mask_value : d_in[i * n + j];
-            //d_out[i * n + j] = mask_value;
-        }
+		    d_out[i * n + j] = mask[i *n + j] == 1 ? freq_medians[i] : d_in[i * n + j];
 	}
 
 }
@@ -256,6 +254,16 @@ void mask_rows(global uchar *data, global uchar *mask, global uchar *medians, ui
 	}
 }
 
+kernel 
+void constant_row_mask(global uchar *data, global uchar *mask, uint m, uint n) {
+	uint i = get_global_id(0);
+	if (i < m && mask[i] == 1) {
+		for (uint j = 0; j < n; j++) {
+			data[i * n + j] = 1;
+		}
+	}
+}
+
 
 
 kernel 
@@ -284,24 +292,6 @@ void edge_threshold(global uchar *mask, global uchar* mads, global uchar *d_in, 
 
 }
 	
-kernel 
-void flag_rows(global float *mask, float row_sum_threshold, uint m, uint n) {
-	int i = get_global_id(0);
-
-	if (i >= m) { return; }
-
-	// Count the number of masked cells in the rows.
-	uint count = 0;
-	for (int j = 0; j < n; j++) {
-		count += mask[i * n + j];
-	}
-	
-	// Mask the entire row if the number of masked cells is above some threshold.
-	if ( count > row_sum_threshold) {
-		for (int j = 0; j < n; j++) { mask[i * n + j] = 1; }
-	}
-
-}
 	
 kernel 
 void row_medians(global uchar *medians, global uchar *d_in, uint m, uint n) {

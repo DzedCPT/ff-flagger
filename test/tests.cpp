@@ -203,25 +203,29 @@ TEST_CASE( "Test GPU Transpose.", "[transpose], [kernel]" ) {
 
 
 TEST_CASE( "Test Mask.", "[mask], [kernel]" ) {
-	uint8_t mask_value = 10;
 	for (size_t test = 0; test < 10; test++) {
 		InitExperiment(1000, 1000, 0, 255);
+
 		std::vector<uint8_t> mask(m * n);
+		std::vector<uint8_t> medians(m);
 
 		// Generate random mask.
 		for (auto& v: mask) { v = (0.5 < std::uniform_real_distribution<>(0, 1)(rng)); } ;
+		for (auto& v: medians) { v = RandInt(0, 10); } ;
 
 		// Sequential Implementation.
 		for (size_t i = 0; i < m; i++) {
 			for (size_t j = 0; j < n; j++) {
-				vec[i * n + j] = (mask[i * n + j] == 1) ? mask_value : vec[i * n + j];
+				vec[i * n + j] = (mask[i * n + j] == 1) ? medians[i] : vec[i * n + j];
 			}
 		}
 
 		// GPU.	
 		cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * n * sizeof(uint8_t));
 		gpu.WriteToBuffer(mask.data(), d_mask, m * n * sizeof(uint8_t));
-		gpu.Mask(d_out, d_in, d_mask, mask_value,  m, n, 25, 25);
+		cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
+		gpu.WriteToBuffer(medians.data(), d_medians, m * sizeof(uint8_t));
+		gpu.Mask(d_out, d_in, d_mask, d_medians,  m, n, 25, 25);
 		gpu.ReadFromBuffer(results.data(), d_out, m * n *sizeof(uint8_t));
 
 		CHECK_VEC_EQUAL(vec, results);

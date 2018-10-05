@@ -11,42 +11,49 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
 	size_t m = nbins;
 	size_t n = in_fil_file.header.nchans;
 	GPUEnviroment gpu;
-	cl::Buffer uint_buffer = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(uint8_t));
-	cl::Buffer float_buffer = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n  * sizeof(float));
-	cl::Buffer float_buffer_T = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n  * sizeof(float));
-	cl::Buffer mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(float));
-	cl::Buffer mask_T = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(float));
-	cl::Buffer mads = gpu.InitBuffer(CL_MEM_READ_WRITE , n * sizeof(float));
-	cl::Buffer medians = gpu.InitBuffer(CL_MEM_READ_WRITE , n * sizeof(float));
+	cl::Buffer uint_buffer   = gpu.InitBuffer(CL_MEM_READ_WRITE, m * n * sizeof(uint8_t));
+	cl::Buffer uint_buffer_T = gpu.InitBuffer(CL_MEM_READ_WRITE, m * n * sizeof(uint8_t));
+	cl::Buffer mask   = gpu.InitBuffer(CL_MEM_READ_WRITE, m * n * sizeof(uint8_t));
+	cl::Buffer mask_T = gpu.InitBuffer(CL_MEM_READ_WRITE, m * n * sizeof(uint8_t));
+
+	cl::Buffer time_mads = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
+	cl::Buffer time_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
+	cl::Buffer freq_mads = gpu.InitBuffer(CL_MEM_READ_WRITE, n * sizeof(uint8_t));
+	cl::Buffer freq_medians = gpu.InitBuffer(CL_MEM_READ_WRITE , n * sizeof(uint8_t));
 
     INIT_TIMER(timer);
     INIT_MARK(mark);
 
-
     in_fil_file.nbins_per_block = nbins;
     total_time = (total_time != 0) ? total_time : in_fil_file.nbins * in_fil_file.header.tsamp;
     while(in_fil_file.tellg() < total_time) {
-		in_fil_file.ReadInSpectraBlock(spectra);
 
+		// Read in the data.
+		in_fil_file.ReadInSpectraBlock(spectra);
 		gpu.WriteToBuffer(spectra.data(), uint_buffer, spectra.size() * sizeof(uint8_t));
-		gpu.Upcast(float_buffer, uint_buffer, spectra.size(), 500);
-        gpu.Transpose(float_buffer_T, float_buffer, m, n, 12, 12);
-		float mean = gpu.Reduce(float_buffer_T, 100, m * n, 1000) / (m * n);
 
 		MARK_TIME(mark);
-		gpu.queue.enqueueFillBuffer(mask_T, 0, 0, n * m * sizeof(float));
+		gpu.queue.enqueueFillBuffer(mask, 0, 0, n * m * sizeof(uint8_t));
 
-		gpu.MADRows(mads, medians, float_buffer_T, n, m, 500);
-		gpu.EdgeThreshold(mask_T, mads, float_buffer_T, threshold, n, m, 12, 12);
+		gpu.MADRows(time_mads, time_medians, uint_buffer, m, n, 500);
+		gpu.EdgeThreshold(mask, time_mads, uint_buffer, threshold, m, n, 12, 12);
+		gpu.Grubb(time_medians, m, 5, threshold, 1000);
+		gpu.ConstantRowMask(mask, time_medians, m, n, 500);
 
-        gpu.Transpose(mask, mask_T, n, m, 12, 12);
-        gpu.FlagRows(mask, row_threshold * n, m, n, 500);
+		gpu.Transpose(uint_buffer_T, uint_buffer, m, n, 12, 12);
+		gpu.Transpose(mask_T, mask, m, n, 12, 12);
 
-		gpu.Mask(float_buffer, float_buffer, mask, mean, m, n, 12, 12);
-		gpu.Downcast(uint_buffer, float_buffer, spectra.size(), 500);
-		gpu.ReadFromBuffer(spectra.data(), uint_buffer, spectra.size() * sizeof(uint8_t));
+		gpu.MADRows(freq_mads, freq_medians, uint_buffer_T, n, m, 500);
+		gpu.EdgeThreshold(mask_T, freq_mads, uint_buffer_T, threshold, n, m, 12, 12);
+
+		gpu.Mask(uint_buffer_T, uint_buffer_T, mask_T, freq_medians, m, n, 12, 12);
+
+		gpu.Transpose(uint_buffer, uint_buffer_T, n, m, 12, 12);
+		
 
 		ADD_TIME_SINCE_MARK(timer, mark);
+		gpu.ReadFromBuffer(spectra.data(), uint_buffer, spectra.size() * sizeof(uint8_t));
+
 
 
         out_fil_file.AppendSpectra(spectra);
@@ -57,6 +64,7 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
     std::cout << std::endl;
 
     PRINT_TIMER(timer);
+	gpu.PrintKernelTimers();
 
 
 
