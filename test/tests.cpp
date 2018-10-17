@@ -26,7 +26,7 @@
 	} 
 
 using namespace std;
-GPUEnviroment gpu;
+RFIPipeline gpu(0, 0);
 std::vector<uint8_t> vec;
 std::vector<uint8_t> results;
 cl::Buffer d_in;
@@ -166,7 +166,7 @@ TEST_CASE( "Test Flag rows.", "[row_flag], [rfi]" ) {
 
 TEST_CASE( "Test GPU Transpose.", "[transpose], [kernel]" ) {
 	//INIT_TIMER(timer);
-    //INIT_MARK(mark);
+	//INIT_MARK(mark);
 
 
 	//InitExperiment(1000, 1000, 0, 256);
@@ -181,7 +181,6 @@ TEST_CASE( "Test GPU Transpose.", "[transpose], [kernel]" ) {
 			
 			}	
 		}
-		cout << "============" << endl;
 		// GPU.
 		//MARK_TIME(mark);
 		gpu.Transpose(d_out, d_in, m, n, 50, 10);
@@ -197,8 +196,8 @@ TEST_CASE( "Test GPU Transpose.", "[transpose], [kernel]" ) {
 
 		CHECK_VEC_EQUAL(correct, results);
 	}
-    //PRINT_TIMER(timer);
-    //PRINT_TIMER(gpu.transpose_timer);
+	//PRINT_TIMER(timer);
+	//PRINT_TIMER(gpu.transpose_timer);
 }
 
 

@@ -3,7 +3,7 @@
  Jedda Boyle
 
  CONTAINS:
- The implementation of GPUEnviroment class.
+ The implementation of RFIPipeline class.
 
  NOTES:
 
@@ -25,7 +25,107 @@
 #include "device.h"
 #include "opencl_error_handling.h"
 
-GPUEnviroment::GPUEnviroment (void) {
+void RFIPipeline::LoadKernels(void) {
+	std::ifstream file_stream("src/kernels.cl");
+	std::stringstream buffer;
+	buffer << file_stream.rdbuf();	
+	std::string source = buffer.str();
+	const char * c = source.c_str();
+
+	// Create program.
+	cl::Program::Sources program_source(1, std::make_pair(c, strlen(c)));
+	program = cl::Program(context, program_source);
+	CHECK_CL(program.build(devices));
+	
+	// Create kernels.
+	replace_rfi = cl::Kernel(program, "replace_rfi", &error_code); CHECK_CL(error_code);
+	mask_rows = cl::Kernel(program, "mask_rows", &error_code); CHECK_CL(error_code);
+	constant_row_mask = cl::Kernel(program, "constant_row_mask", &error_code); CHECK_CL(error_code);
+	detect_outliers = cl::Kernel(program, "detect_outliers", &error_code); CHECK_CL(error_code);
+	compute_mads = cl::Kernel(program, "compute_mads", &error_code); CHECK_CL(error_code);
+	transpose = cl::Kernel(program, "transpose", &error_code); CHECK_CL(error_code);
+	edge_threshold = cl::Kernel(program, "edge_threshold", &error_code); CHECK_CL(error_code);
+	compute_medians = cl::Kernel(program, "compute_medians", &error_code); CHECK_CL(error_code);
+
+
+
+}
+
+
+void RFIPipeline::InitMemBuffers(void) {
+	data_T = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
+	mask   = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
+	mask_T = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
+
+	time_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
+	time_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
+	freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
+	freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
+
+
+}
+
+
+void RFIPipeline::AAFlagger(const cl::Buffer& data) {
+
+	queue.enqueueFillBuffer(mask, 0, 0, n_channels * n_samples * sizeof(uint8_t));
+
+	ComputeMads(freq_mads, freq_medians, data, n_channels, n_samples, 500);
+	EdgeThreshold(mask, freq_mads, data, 3.5, n_channels, n_samples, 12, 12);
+
+	Transpose(data_T, data, n_channels, n_samples, 12, 12);
+	Transpose(mask_T, mask, n_channels, n_samples, 12, 12);
+	
+
+	ComputeMads(time_mads, time_medians, data_T, n_samples, n_channels, 500);
+	EdgeThreshold(mask_T, time_mads, data_T, 3.5, n_samples, n_channels, 12, 12);
+	OutlierDetection(time_medians, n_samples, 5, 3.5, 1000);
+	ConstantRowMask(mask_T, time_medians, n_samples, n_channels, 500);
+
+	Transpose(data, data_T, n_samples, n_channels, 12, 12);
+	Transpose(mask, mask_T, n_samples, n_channels, 12, 12);
+
+	ReplaceRFI(data, data, mask, freq_medians, n_channels, n_samples, 12, 12);
+
+
+	//this->queue.enqueueFillBuffer(mask, 0, 0, n * m * sizeof(uint8_t));
+
+	//ComputeMads(time_mads, time_medians, uint_buffer, m, n, 500);
+	//EdgeThreshold(mask, time_mads, uint_buffer, threshold, m, n, 12, 12);
+	//OutlierDetection(time_medians, m, 5, threshold, 1000);
+	//ConstantRowMask(mask, time_medians, m, n, 500);
+
+	//gpu.Transpose(uint_buffer_T, uint_buffer, m, n, 12, 12);
+	//gpu.Transpose(mask_T, mask, m, n, 12, 12);
+
+	//gpu.ComputeMads(freq_mads, freq_medians, uint_buffer_T, n, m, 500);
+	//gpu.EdgeThreshold(mask_T, freq_mads, uint_buffer_T, threshold, n, m, 12, 12);
+
+	//gpu.ReplaceRFI(uint_buffer_T, uint_buffer_T, mask_T, freq_medians, m, n, 12, 12);
+
+	//gpu.Transpose(uint_buffer, uint_buffer_T, n, m, 12, 12);
+	
+}
+
+RFIPipeline::RFIPipeline (cl::Context& context, cl::CommandQueue& queue, std::vector<cl::Device>& devices, size_t _n_channels, size_t _n_samples) {
+	n_samples = _n_samples;
+	n_channels = _n_channels;
+
+	this->devices = devices;
+	this->queue = queue;
+	this->context = context;
+
+	this->LoadKernels();
+
+	this->InitMemBuffers();
+
+}
+
+
+RFIPipeline::RFIPipeline (size_t _n_channels, size_t _n_samples) {
+	n_samples = _n_samples;
+	n_channels = _n_channels;
+
 
 	// Get platform.
 	std::vector<cl::Platform> platforms;
@@ -58,52 +158,43 @@ GPUEnviroment::GPUEnviroment (void) {
 	// Create command queue.
 	queue = cl::CommandQueue(context, devices[0], 0, &error_code); CHECK_CL(error_code);
 
-	// Read in file containing the OpenCl code.
-	std::ifstream file_stream("src/kernels.cl");
-	std::stringstream buffer;
-	buffer << file_stream.rdbuf();	
-	std::string source = buffer.str();
-	const char * c = source.c_str();
-
-	// Create program.
-	cl::Program::Sources program_source(1, std::make_pair(c, strlen(c)));
-	program = cl::Program(context, program_source);
-	CHECK_CL(program.build(devices));
-	
-	// Create kernels.
-	replace_rfi = cl::Kernel(program, "replace_rfi", &error_code); CHECK_CL(error_code);
-	mask_rows = cl::Kernel(program, "mask_rows", &error_code); CHECK_CL(error_code);
-	constant_row_mask = cl::Kernel(program, "constant_row_mask", &error_code); CHECK_CL(error_code);
-	detect_outliers = cl::Kernel(program, "detect_outliers", &error_code); CHECK_CL(error_code);
-	compute_mads = cl::Kernel(program, "compute_mads", &error_code); CHECK_CL(error_code);
-	transpose = cl::Kernel(program, "transpose", &error_code); CHECK_CL(error_code);
-	edge_threshold = cl::Kernel(program, "edge_threshold", &error_code); CHECK_CL(error_code);
-	compute_medians = cl::Kernel(program, "compute_medians", &error_code); CHECK_CL(error_code);
-
+	this->LoadKernels();
+	this->InitMemBuffers();
 }
 
+//RFIPipeline::~RFIPipeline (void) {
+	//clReleaseMemObject(data_T);
+	//clReleaseMemObject(mask);
+	//clReleaseMemObject(mask_T);
 
-cl::Buffer GPUEnviroment::InitBuffer(const cl_mem_flags mem_flag, const size_t size) {
+	//clReleaseMemObject(time_mads);
+	//clReleaseMemObject(time_medians);
+	//clReleaseMemObject(freq_mads);
+	//clReleaseMemObject(freq_medians);
+//}
+
+
+cl::Buffer RFIPipeline::InitBuffer(const cl_mem_flags mem_flag, const size_t size) {
 	return cl::Buffer(context, mem_flag, size);
 }
 
 
 
-void GPUEnviroment::WriteToBuffer(void* host_mem, cl::Buffer& buffer, const size_t size) {
+void RFIPipeline::WriteToBuffer(void* host_mem, cl::Buffer& buffer, const size_t size) {
 	CHECK_CL(queue.enqueueWriteBuffer(buffer, CL_TRUE, 0, size, host_mem));
 }
 
 
-void GPUEnviroment::ReadFromBuffer(void* host_mem, cl::Buffer& buffer, const size_t size) {
+void RFIPipeline::ReadFromBuffer(void* host_mem, cl::Buffer& buffer, const size_t size) {
 	CHECK_CL(queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size, host_mem));
 }
 
 
-void GPUEnviroment::CopyBuffer (const cl::Buffer& src, cl::Buffer& dest, size_t size) {
+void RFIPipeline::CopyBuffer (const cl::Buffer& src, cl::Buffer& dest, size_t size) {
 	CHECK_CL(queue.enqueueCopyBuffer(src, dest, 0, 0, size));
 }
 
-void GPUEnviroment::MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffer& medians, size_t m, size_t n, size_t local_size) {
+void RFIPipeline::MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffer& medians, size_t m, size_t n, size_t local_size) {
 	MARK_TIME(mark);
 	size_t global_size = local_size * std::ceil((float) m / local_size);
 
@@ -119,7 +210,7 @@ void GPUEnviroment::MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffe
 
 }
 
-void GPUEnviroment::ConstantRowMask(const cl::Buffer& data, cl::Buffer& mask, size_t m, size_t n, size_t local_size) {
+void RFIPipeline::ConstantRowMask(const cl::Buffer& data, cl::Buffer& mask, size_t m, size_t n, size_t local_size) {
 	MARK_TIME(mark);
 	size_t global_size = local_size * std::ceil((float) m / local_size);
 
@@ -135,7 +226,7 @@ void GPUEnviroment::ConstantRowMask(const cl::Buffer& data, cl::Buffer& mask, si
 }
 
 
-void GPUEnviroment::ReplaceRFI(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, cl::Buffer& freq_medians, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+void RFIPipeline::ReplaceRFI(const cl::Buffer& d_out, const cl::Buffer& d_in, const cl::Buffer& d_mask, const cl::Buffer& freq_medians, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 
 	MARK_TIME(mark);
 
@@ -159,7 +250,7 @@ void GPUEnviroment::ReplaceRFI(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Bu
 
 }
 
-void GPUEnviroment::Transpose( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+void RFIPipeline::Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	MARK_TIME(mark);
 	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
 	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
@@ -180,7 +271,7 @@ void GPUEnviroment::Transpose( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, si
 }
 
 
-//void GPUEnviroment::Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m) {
+//void RFIPipeline::Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m) {
 	
 	//MARK_TIME(mark);
 	//// Must be square.
@@ -209,7 +300,7 @@ void GPUEnviroment::Transpose( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, si
 //}
 
 
-void GPUEnviroment::EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+void RFIPipeline::EdgeThreshold(const cl::Buffer& mask, const cl::Buffer& mads, const cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	
 	MARK_TIME(mark);
 	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
@@ -232,7 +323,7 @@ void GPUEnviroment::EdgeThreshold(cl::Buffer& mask, cl::Buffer& mads, cl::Buffer
 
 }
 
-void GPUEnviroment::ComputeMedians(cl::Buffer& medians, cl::Buffer& data, size_t m, size_t n, size_t local_size) {
+void RFIPipeline::ComputeMedians(const cl::Buffer& medians, const cl::Buffer& data, size_t m, size_t n, size_t local_size) {
 	MARK_TIME(mark);
 
 	size_t global_size = local_size * std::ceil((float) m / local_size);
@@ -249,7 +340,7 @@ void GPUEnviroment::ComputeMedians(cl::Buffer& medians, cl::Buffer& data, size_t
 }
 
 
-void GPUEnviroment::ComputeMads(const cl::Buffer& mads, cl::Buffer& medians, cl::Buffer& d_in, size_t m, size_t n, size_t local_size) {
+void RFIPipeline::ComputeMads(const cl::Buffer& mads, const cl::Buffer& medians, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size) {
 	MARK_TIME(mark);
 	//size_t global_size_m = local_size_m * std::ceil((float) m / (local_size_m * window_size));
 	size_t global_size = local_size * std::ceil((float) m / local_size);
@@ -268,8 +359,8 @@ void GPUEnviroment::ComputeMads(const cl::Buffer& mads, cl::Buffer& medians, cl:
 
 }
 
-//void GPUEnviroment::Grubb(const cl::Buffer data, size_t len, size_t size, float threshold, size_t local_size) {
-void GPUEnviroment::OutlierDetection(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size) {
+//void RFIPipeline::Grubb(const cl::Buffer data, size_t len, size_t size, float threshold, size_t local_size) {
+void RFIPipeline::OutlierDetection(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size) {
 	MARK_TIME(mark);
 	
 	size_t global_size = local_size * std::ceil((float) len / (local_size * work_per_thread));
@@ -289,7 +380,7 @@ void GPUEnviroment::OutlierDetection(const cl::Buffer data, size_t len, size_t w
 
 }
 
-//void GPUEnviroment::MADRows(const cl::Buffer& d_out, cl::Buffer& d_in, size_t mad_size, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+//void RFIPipeline::MADRows(const cl::Buffer& d_out, cl::Buffer& d_in, size_t mad_size, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	////size_t global_size_m = local_size_m * std::ceil((float) m / (local_size_m * window_size));
 	//size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
 	//size_t global_size_n = local_size_n * std::ceil((float) n / (local_size_n * mad_size));
