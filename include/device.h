@@ -31,6 +31,11 @@ public:
 	cl::Kernel transpose;
 	cl::Kernel compute_mads;
 	cl::Kernel edge_threshold;
+	cl::Kernel reduce;
+	cl::Kernel compute_means;
+	cl::Kernel compute_deviation;
+
+
 
 	// OpenCL enviroemtn variables.
 	cl::Program program;
@@ -54,6 +59,8 @@ public:
 	INIT_TIMER(mad_timer);
 	INIT_TIMER(edge_timer);
 	INIT_TIMER(const_mask_rows_timer);
+	INIT_TIMER(reduce_timer);
+	INIT_TIMER(row_mean_timer);
 
 	cl::Buffer data_T;
 	cl::Buffer mask;
@@ -64,6 +71,8 @@ public:
 	cl::Buffer freq_mads;
 	cl::Buffer freq_medians;
 
+	cl::Buffer reduction_memory;
+	std::vector<float> partially_reduced;
 
 	// Setup context, queue, devices and kernels.
 	RFIPipeline (cl::Context& context, cl::CommandQueue& queue, std::vector<cl::Device>& devices, size_t _n_channels, size_t _n_samples);
@@ -79,6 +88,8 @@ public:
 		PRINT_TIMER(mad_timer);
 		PRINT_TIMER(edge_timer);
 		PRINT_TIMER(const_mask_rows_timer);
+		PRINT_TIMER(reduce_timer);
+		PRINT_TIMER(row_mean_timer);
 
 
 	}
@@ -100,7 +111,9 @@ public:
 	//void Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, uint8_t mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 	void ReplaceRFI(const cl::Buffer& d_out, const cl::Buffer& d_in, const cl::Buffer& d_mask, const cl::Buffer& freq_medians, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
 
-	void MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffer& medians, size_t m, size_t n, size_t local_size);
+	//void MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffer& medians, size_t m, size_t n, size_t local_size);
+	void MaskRows(const cl::Buffer& d_out, cl::Buffer& mask, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+
 	void ConstantRowMask(const cl::Buffer& data, cl::Buffer& mask, size_t m, size_t n, size_t local_size);
 
 	void Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
@@ -114,7 +127,19 @@ public:
 
 	void ComputeMedians(const cl::Buffer& medians, const cl::Buffer& data, size_t m, size_t n, size_t local_size);
 
-	void OutlierDetection(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size);
+	void ComputeMeans(const cl::Buffer& d_out, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+
+	//void OutlierDetection(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size);
+	
+	void DetectOutliers(const cl::Buffer& d_out, const cl::Buffer& d_in, float mean, float std, float threshold, size_t len, size_t local_size);
+
+	void FloatReduce(cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
+
+	void ComputeDeviation(cl::Buffer d_in, cl::Buffer d_out, float mean, size_t len, size_t local_size);
+
+	float ComputeStd(cl::Buffer& data, cl::Buffer& temp, float mean, size_t len, size_t local_size);
+
+	
 
 };
 
