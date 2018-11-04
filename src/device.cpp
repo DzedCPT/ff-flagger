@@ -45,6 +45,7 @@ void RFIPipeline::LoadKernels(void) {
 	compute_mads = cl::Kernel(program, "compute_mads", &error_code); CHECK_CL(error_code);
 	transpose = cl::Kernel(program, "transpose", &error_code); CHECK_CL(error_code);
 	edge_threshold = cl::Kernel(program, "edge_threshold", &error_code); CHECK_CL(error_code);
+	sum_threshold = cl::Kernel(program, "sum_threshold", &error_code); CHECK_CL(error_code);
 	compute_medians = cl::Kernel(program, "compute_medians", &error_code); CHECK_CL(error_code);
 	reduce = cl::Kernel(program, "reduce", &error_code); CHECK_CL(error_code);
 	compute_means = cl::Kernel(program, "compute_means", &error_code); CHECK_CL(error_code);
@@ -64,11 +65,53 @@ void RFIPipeline::InitMemBuffers(void) {
 	freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
 	freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
 
+	time_means = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(float));
+	time_temp = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(float));
+
 	
-	partially_reduced.resize(100);
 
 
 }
+
+
+void RFIPipeline::BasicFlagger(const cl::Buffer& data) {
+
+	queue.enqueueFillBuffer(mask_T, 0, 0, n_channels * n_samples * sizeof(uint8_t));
+
+	ComputeMedians(freq_medians, data, n_channels, n_samples, 36);
+
+	Transpose(data_T, data, n_channels, n_samples, 16, 16);
+
+	ComputeMeans(time_means, data_T, n_samples, n_channels);
+	float mean = FloatReduce(time_temp, time_means, n_samples);
+	float std = ComputeStd(time_temp, time_means, mean, n_samples, 1024);
+	DetectOutliers(time_temp, time_temp, mean, std, 2.5, n_samples, 128);
+	MaskRows(mask_T, time_temp, n_samples, n_channels, 16, 16);
+
+	Transpose(data, data_T, n_samples, n_channels, 12, 12);
+	Transpose(mask, mask_T, n_samples, n_channels, 12, 12);
+
+	ReplaceRFI(data, data, mask, freq_medians, n_channels, n_samples, 12, 12);
+
+	//this->queue.enqueueFillBuffer(mask, 0, 0, n * m * sizeof(uint8_t));
+
+	//ComputeMads(time_mads, time_medians, uint_buffer, m, n, 500);
+	//EdgeThreshold(mask, time_mads, uint_buffer, threshold, m, n, 12, 12);
+	//OutlierDetection(time_medians, m, 5, threshold, 1000);
+	//ConstantRowMask(mask, time_medians, m, n, 500);
+
+	//gpu.Transpose(uint_buffer_T, uint_buffer, m, n, 12, 12);
+	//gpu.Transpose(mask_T, mask, m, n, 12, 12);
+
+	//gpu.ComputeMads(freq_mads, freq_medians, uint_buffer_T, n, m, 500);
+	//gpu.EdgeThreshold(mask_T, freq_mads, uint_buffer_T, threshold, n, m, 12, 12);
+
+	//gpu.ReplaceRFI(uint_buffer_T, uint_buffer_T, mask_T, freq_medians, m, n, 12, 12);
+
+	//gpu.Transpose(uint_buffer, uint_buffer_T, n, m, 12, 12);
+	
+}
+
 
 
 void RFIPipeline::AAFlagger(const cl::Buffer& data) {
@@ -257,19 +300,19 @@ void RFIPipeline::ReplaceRFI(const cl::Buffer& d_out, const cl::Buffer& d_in, co
 
 }
 
-void RFIPipeline::Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+void RFIPipeline::Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, int m, int n, size_t local_size_m, size_t local_size_n) {
 	MARK_TIME(mark);
 	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
 	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
 	
-
 	cl::NDRange local_range(local_size_m, local_size_n);
 	cl::NDRange global_range(global_size_m, global_size_n);
 
 	CHECK_CL(transpose.setArg(0, d_out));
 	CHECK_CL(transpose.setArg(1, d_in));
-	CHECK_CL(transpose.setArg(2, static_cast<unsigned int>(m)));
-	CHECK_CL(transpose.setArg(3, static_cast<unsigned int>(n)));
+	CHECK_CL(transpose.setArg(2, m));
+	CHECK_CL(transpose.setArg(3, n));
+	CHECK_CL(transpose.setArg(4, 16 * 17 * sizeof(uint8_t), NULL));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(transpose, cl::NullRange, global_range, local_range));
 
@@ -306,8 +349,36 @@ void RFIPipeline::Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, siz
 
 //}
 
+void RFIPipeline::SumThreshold(const cl::Buffer& mask_out, const cl::Buffer& d_in, const cl::Buffer& mask_in, const cl::Buffer& thresholds, int window_size, int m, int n, size_t local_size_m, size_t local_size_n) {
+		
+	MARK_TIME(mark);
+	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
+	size_t global_size_n = local_size_n * std::ceil((float) n / local_size_n);
 
-void RFIPipeline::EdgeThreshold(const cl::Buffer& mask, const cl::Buffer& mads, const cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+	cl::NDRange local_range(local_size_m, local_size_n);
+	cl::NDRange global_range(global_size_m, global_size_n);
+
+	CHECK_CL(sum_threshold.setArg(0, mask_out));
+	CHECK_CL(sum_threshold.setArg(1, d_in));
+	CHECK_CL(sum_threshold.setArg(2, mask_in));
+	CHECK_CL(sum_threshold.setArg(3, thresholds));
+	CHECK_CL(sum_threshold.setArg(4, window_size));
+	CHECK_CL(sum_threshold.setArg(5, m));
+	CHECK_CL(sum_threshold.setArg(6, n));
+	CHECK_CL(sum_threshold.setArg(7, local_size_m * (local_size_n + window_size) * sizeof(float), NULL));
+	CHECK_CL(sum_threshold.setArg(8, local_size_m * (local_size_n + window_size) * sizeof(float), NULL));
+	CHECK_CL(sum_threshold.setArg(9, local_size_m * sizeof(float), NULL));
+
+	CHECK_CL(queue.enqueueNDRangeKernel(sum_threshold, cl::NullRange, global_range, local_range));
+	ADD_TIME_SINCE_MARK(edge_timer, mark);
+
+
+
+}
+
+
+
+void RFIPipeline::EdgeThreshold(const cl::Buffer& mask_out, const cl::Buffer& d_in, const cl::Buffer& mask_in, const cl::Buffer& mads, float threshold, int window_size, int m, int n, size_t local_size_m, size_t local_size_n) {
 	
 	MARK_TIME(mark);
 	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
@@ -316,12 +387,18 @@ void RFIPipeline::EdgeThreshold(const cl::Buffer& mask, const cl::Buffer& mads, 
 	cl::NDRange local_range(local_size_m, local_size_n);
 	cl::NDRange global_range(global_size_m, global_size_n);
 
-	CHECK_CL(edge_threshold.setArg(0, mask));
-	CHECK_CL(edge_threshold.setArg(1, mads));
-	CHECK_CL(edge_threshold.setArg(2, d_in));
-	CHECK_CL(edge_threshold.setArg(3, threshold));
-	CHECK_CL(edge_threshold.setArg(4, static_cast<unsigned int>(m)));
-	CHECK_CL(edge_threshold.setArg(5, static_cast<unsigned int>(n)));
+//void edge_threshold(global uchar *mask_out, global uchar* d_in, global uchar *mask, global uchar *mads, float threshold, int window_size, int m, int n, local float *ldata, local float *lmads) {
+	CHECK_CL(edge_threshold.setArg(0, mask_out));
+	CHECK_CL(edge_threshold.setArg(1, d_in));
+	CHECK_CL(edge_threshold.setArg(2, mask_in));
+	CHECK_CL(edge_threshold.setArg(3, mads));
+	CHECK_CL(edge_threshold.setArg(4, threshold));
+	CHECK_CL(edge_threshold.setArg(5, window_size));
+	CHECK_CL(edge_threshold.setArg(6, m));
+	CHECK_CL(edge_threshold.setArg(7, n));
+	CHECK_CL(edge_threshold.setArg(8, local_size_m * (local_size_n + window_size + 1) * sizeof(float), NULL));
+	CHECK_CL(edge_threshold.setArg(9, local_size_m * sizeof(float), NULL));
+	CHECK_CL(edge_threshold.setArg(10, local_size_m * (local_size_n + window_size + 1) * sizeof(float), NULL));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(edge_threshold, cl::NullRange, global_range, local_range));
 	ADD_TIME_SINCE_MARK(edge_timer, mark);
@@ -400,74 +477,51 @@ void RFIPipeline::DetectOutliers(const cl::Buffer& d_out, const cl::Buffer& d_in
 
 //}
 
-void RFIPipeline::FloatReduce(cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size) {
-	MARK_TIME(mark);
-	size_t num_groups = std::ceil((float) len / local_size);
-	size_t global_size = local_size * num_groups;
+float RFIPipeline::FloatReduce(cl::Buffer& d_out, cl::Buffer& d_in, int n) {
+	const int n_threads = 128;
+	int n_groups = (n + (n_threads * 2 - 1)) / (n_threads * 2);
 
-	// Init buffer_A to have the same values as d_in.
-	CHECK_CL(reduce.setArg(0, d_in));
+	// First reduce step.
+	CHECK_CL(reduce.setArg(0, d_out));
+	CHECK_CL(reduce.setArg(1, d_in));
+	CHECK_CL(reduce.setArg(2, n));
+	CHECK_CL(reduce.setArg(3, n_threads * sizeof(float), NULL));
+	CHECK_CL(queue.enqueueNDRangeKernel(reduce, cl::NullRange, n_groups * n_threads, n_threads));
+
+	// Do rest of reduce on d_out so that d_in is left untouched.
 	CHECK_CL(reduce.setArg(1, d_out));
-	CHECK_CL(reduce.setArg(2, static_cast<unsigned int>(len)));
-	CHECK_CL(reduce.setArg(3, local_size * sizeof(float), NULL));
 
-	CHECK_CL(queue.enqueueNDRangeKernel(reduce, cl::NullRange, global_size, local_size));
-	len = num_groups;	
-	num_groups = std::ceil((float) len / local_size);
-	global_size = local_size * num_groups;
-		
-
-	while (true) {
-		// Set args.
-		CHECK_CL(reduce.setArg(0, d_out));
-		//CHECK_CL(reduce.setArg(0, buffer_A));
-	  	CHECK_CL(reduce.setArg(1, d_out));
-	  	//CHECK_CL(reduce.setArg(1, buffer_A));
-	  	CHECK_CL(reduce.setArg(2, static_cast<unsigned int>(len)));
-	  	CHECK_CL(reduce.setArg(3, local_size * sizeof(float), NULL));
-
-		// Launch kernel.
-	  	CHECK_CL(queue.enqueueNDRangeKernel(reduce, cl::NullRange, global_size, local_size));
+	// Do remaining reduce steps.
+	while (n_groups >= 2) {
+		n = n_groups;	
+		n_groups = (n + (n_threads * 2 - 1)) / (n_threads * 2);
 	
-		// Check if the number of values still to be reduced is less than drop out.
-		if (num_groups < 2) {
-			break;
-		}
-		
-		// Set values for next reduce step on partially reduced values.
-		len = num_groups;	
-		num_groups = std::ceil((float) len / local_size);
-		global_size = local_size * num_groups;
-		//if (num_groups < 2) {
-			//break;
-		//}
-	  
-		
+		// Launch kernel for next reduce
+	  	CHECK_CL(reduce.setArg(2, n));
+	  	CHECK_CL(queue.enqueueNDRangeKernel(reduce, cl::NullRange, n_groups * n_threads, n_threads));
+	
 	}
 
-	// Perform the final reduction sequentially.
-	//std::vector<float> partially_reduced(num_groups);
-	//partially_reduced.resize(num_groups);
-	//float to_return;
-	//ReadFromBuffer(&to_return, d_out,  sizeof(float));
-	//ReadFromBuffer(partially_reduced.data(), buffer_A,  num_groups * sizeof(float));
-	ADD_TIME_SINCE_MARK(reduce_timer, mark);
-	//return std::accumulate(partially_reduced.begin(), partially_reduced.begin() + num_groups, 0.0);
-	//return to_return;
+	float to_return;
+	ReadFromBuffer(&to_return, d_out, sizeof(float));
+	return to_return;
+
 
 }
 
-float RFIPipeline::ComputeStd(cl::Buffer& data, cl::Buffer& temp, float mean, size_t len, size_t local_size) {
-	size_t global_size = local_size * std::ceil((float) len / local_size);
+float RFIPipeline::ComputeStd(cl::Buffer& data, cl::Buffer& temp, float mean, int n, size_t local_size) {
+	size_t global_size = local_size * std::ceil((float) n / local_size);
 
 	CHECK_CL(compute_deviation.setArg(0, temp));
 	CHECK_CL(compute_deviation.setArg(1, data));
 	CHECK_CL(compute_deviation.setArg(2, mean));
-	CHECK_CL(compute_deviation.setArg(3, static_cast<unsigned int>(len)));
+	CHECK_CL(compute_deviation.setArg(3, n));
 
 	CHECK_CL(queue.enqueueNDRangeKernel(compute_deviation, cl::NullRange, global_size, local_size));
 
-	//return std::sqrt(FloatReduce(temp, len, local_size));
+	cl::Buffer out = InitBuffer(CL_MEM_READ_WRITE, n * sizeof(float));
+	
+	return std::sqrt( (FloatReduce(out, temp, n) / n) - std::pow(mean, 2));
 
 	
 
@@ -475,20 +529,20 @@ float RFIPipeline::ComputeStd(cl::Buffer& data, cl::Buffer& temp, float mean, si
 
 
 
-void RFIPipeline::ComputeMeans(const cl::Buffer& d_out, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
+void RFIPipeline::ComputeMeans(const cl::Buffer& d_out, const cl::Buffer& d_in, int m, int n) {
 	MARK_TIME(mark);
-	size_t global_size_m = local_size_m * std::ceil((float) m / local_size_m);
+	size_t global_size_m = 8 * std::ceil((float) m / 8);
 
-	cl::NDRange local_range(local_size_m, local_size_n);
-	cl::NDRange global_range(global_size_m, local_size_n);
+	cl::NDRange local_range(8, 128);
+	cl::NDRange global_range(global_size_m, 128);
 
 
 	// Set args.
 	CHECK_CL(compute_means.setArg(0, d_out));
 	CHECK_CL(compute_means.setArg(1, d_in));
-	CHECK_CL(compute_means.setArg(2, static_cast<unsigned int>(m)));
-	CHECK_CL(compute_means.setArg(3, static_cast<unsigned int>(n)));
-	CHECK_CL(compute_means.setArg(4, local_size_m * local_size_n * sizeof(int), NULL));
+	CHECK_CL(compute_means.setArg(2, m));
+	CHECK_CL(compute_means.setArg(3, n));
+	CHECK_CL(compute_means.setArg(4, 8 * 128 * sizeof(int), NULL));
 					
 	// Run kernel.
 	CHECK_CL(queue.enqueueNDRangeKernel(compute_means, cl::NullRange, global_range, local_range));

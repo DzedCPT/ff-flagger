@@ -31,6 +31,7 @@ public:
 	cl::Kernel transpose;
 	cl::Kernel compute_mads;
 	cl::Kernel edge_threshold;
+	cl::Kernel sum_threshold;
 	cl::Kernel reduce;
 	cl::Kernel compute_means;
 	cl::Kernel compute_deviation;
@@ -71,6 +72,9 @@ public:
 	cl::Buffer freq_mads;
 	cl::Buffer freq_medians;
 
+	cl::Buffer time_means;
+	cl::Buffer time_temp;
+
 	cl::Buffer reduction_memory;
 	std::vector<float> partially_reduced;
 
@@ -102,7 +106,9 @@ public:
 	void InitMemBuffers(void);
 	void WriteToBuffer(void* host_mem, cl::Buffer& buffer, const size_t size);
 
-	void AAFlagger(const cl::Buffer& datae);
+	void AAFlagger(const cl::Buffer& data);
+
+	void BasicFlagger(const cl::Buffer& data);
 
 	void ReadFromBuffer(void* host_mem, cl::Buffer& buffer, const size_t size);
 
@@ -116,28 +122,30 @@ public:
 
 	void ConstantRowMask(const cl::Buffer& data, cl::Buffer& mask, size_t m, size_t n, size_t local_size);
 
-	void Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	void Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, int m, int n, size_t local_size_m, size_t local_size_n);
 	//void Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m);
 
 	//void Transpose2( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim);
 
-	void EdgeThreshold(const cl::Buffer& mask, const cl::Buffer& mads, const cl::Buffer& d_in, float threshold, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	void EdgeThreshold(const cl::Buffer& mask_out, const cl::Buffer& d_in, const cl::Buffer& mask, const cl::Buffer& mads, float threshold, int window_size, int m, int n, size_t local_size_m, size_t local_size_n);
+
+	void SumThreshold(const cl::Buffer& mask, const cl::Buffer& d_in, const cl::Buffer& mask_in, const cl::Buffer& thresholds, int window_size, int m, int n, size_t local_size_m, size_t local_size_n);
 
 	void ComputeMads(const cl::Buffer& mads, const cl::Buffer& medians, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size);
 
 	void ComputeMedians(const cl::Buffer& medians, const cl::Buffer& data, size_t m, size_t n, size_t local_size);
 
-	void ComputeMeans(const cl::Buffer& d_out, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	void ComputeMeans(const cl::Buffer& d_out, const cl::Buffer& d_in, int m, int n);
 
 	//void OutlierDetection(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size);
 	
 	void DetectOutliers(const cl::Buffer& d_out, const cl::Buffer& d_in, float mean, float std, float threshold, size_t len, size_t local_size);
 
-	void FloatReduce(cl::Buffer& d_out, cl::Buffer& d_in, size_t len, size_t local_size);
+	float FloatReduce(cl::Buffer& d_out, cl::Buffer& d_in, int len);
 
-	void ComputeDeviation(cl::Buffer d_in, cl::Buffer d_out, float mean, size_t len, size_t local_size);
+	//void ComputeDeviation(cl::Buffer d_in, cl::Buffer d_out, float mean, size_t len, size_t local_size);
 
-	float ComputeStd(cl::Buffer& data, cl::Buffer& temp, float mean, size_t len, size_t local_size);
+	float ComputeStd(cl::Buffer& data, cl::Buffer& temp, float mean, int n, size_t local_size);
 
 	
 

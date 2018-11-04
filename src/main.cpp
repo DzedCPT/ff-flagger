@@ -44,7 +44,7 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
 		rfi_pipeline.Transpose(uint_buffer, uint_buffer_T, nbins, in_fil_file.header.nchans, 12, 12);
 
 		MARK_TIME(mark);
-		rfi_pipeline.AAFlagger(uint_buffer);
+		rfi_pipeline.BasicFlagger(uint_buffer);
 		//timestamp_t t1 = get_timestamp();
 		//gpu.queue.enqueueFillBuffer(mask, 0, 0, n * m * sizeof(uint8_t));
 
@@ -76,7 +76,6 @@ void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, FilterBank<uint8_t>& ou
     std::cout << std::endl;
 
     PRINT_TIMER(timer);
-	rfi_pipeline.PrintKernelTimers();
 
 
 
@@ -100,7 +99,7 @@ int main(int argc, char *argv[]) {
     float row_threshold = 0.3;
 	app.add_option("-r,--row_threshold", row_threshold, "", true);
 
-	int n = 5000;
+	int n = 43776;
 	app.add_option("-n,--num_bins", n, "# of time bins per event.", true);
 
 	CLI11_PARSE(app, argc, argv);

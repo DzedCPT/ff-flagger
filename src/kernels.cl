@@ -20,64 +20,32 @@ void replace_rfi(global uchar *clean_data, global uchar *data, global uchar* rfi
 }
 
 kernel
-void compute_deviation(global float *d_out, global float *d_in, float mean, uint len) {
+void compute_deviation(global float *d_out, global float *d_in, float mean, int n) {
 	uint gid = get_global_id(0);
-	if (gid < len) {
-		d_out[gid] =  pow(mean - d_in[gid], 2) / (len - 1);
+	if (gid < n) {
+		/*d_out[gid] =  pow(mean - d_in[gid], 2) / (n - 1);*/
+		/*d_out[gid] =  pow(mean - d_in[gid], 2);*/
+		d_out[gid] =  pow(d_in[gid], 2);
 	}
 
 }
 /*kernel*/
-/*void transpose(global uchar *d_out, const global uchar *d_in, uint tile_dim, uint m, uint n, local uchar *tile) {*/
-	/*[>uint tile_dim = tile_dim_n;<]*/
-	/*[>uint x = get_group_id(0) * tile_dim_m + get_local_id(0);<]*/
-	/*[>uint x = get_global_id(0);<]*/
-	/*[>uint y = get_group_id(1) * tile_dim_n + get_local_id(1);<]*/
+/*void transpose(global uchar *d_out, const global uchar *d_in, int m, int n, local uchar *tile) {*/
+	/*int tile_dim = get_local_size(1)*/
 	/*uint group_x = get_group_id(0);*/
 	/*uint group_y = get_group_id(1);*/
 	/*uint x = group_x * tile_dim + get_local_id(0);*/
-	/*[>uint y = group_x * tile_dim + get_local_id(0);<]*/
 	/*uint y = get_global_id(1);*/
-	/*[>uint work_group_m = get_local_size(0);<]*/
-	/*[>uint work_group_n = get_local_size(1);<]*/
-	/*[>if (x >= m || y >=n ) {<]*/
-		/*[>return;<]*/
-	/*[>}<]*/
 	/*for (uint i = 0; i < tile_dim; i += get_local_size(0)) {*/
 		/*tile[get_local_id(1) * tile_dim + (get_local_id(0)+i)] = d_in[(x + i) * n + y];*/
 	/*}*/
 	/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
 	
-	/*[>x = get_global_id(1);<]*/
-	/*[>x = get_group_id(1) * tile_dim_n + get_local_id(0);<]*/
-	/*[>y = get_group_id(0) * tile_dim_m + get_local_id(1);<]*/
-
-	/*[>if (get_global_id(0) == 0 && get_global_id(1) == 0) {<]*/
-	/*[>if (get_local_id(0) == 0 && get_local_id(1) == 0 && get_group_id(0) == get_num_groups(0) - 1) {<]*/
-		/*[>d_out[x * n + y] = y;<]*/
-		/*[>for (uint i = 0; i < tile_dim_m; i ++) {<]*/
-			/*[>for (uint j = 0; j < tile_dim_m; j++) {<]*/
-				/*[>d_out[i * n + j] = tile[i * tile_dim_n + j];<]*/
-
-			/*[>}<]*/
-		/*[>}<]*/
-		/*[>uint group_x = get_group_id(0);<]*/
-		/*[>uint group_y = get_group_id(1);<]*/
-		/*[>x = group_x * tile_dim_m;<]*/
-		/*[>y = group_y * tile_dim_m;<]*/
-		/*[>d_out[y * m + x] = get_group_id(0) ;<]*/
-		/*[>d_out[(y - 1) * m + x] = get_group_id(1);<]*/
-	/*[>}<]*/
 	/*group_x = get_group_id(1);*/
 	/*group_y = get_group_id(0);*/
 	/*x = group_x * tile_dim + get_local_id(0);*/
 	/*y = group_y * tile_dim + get_local_id(1);*/
-	/*[>y = get_global_id(1);<]*/
-	/*[>if (x >= n || y >=m ) {<]*/
-		/*[>return;<]*/
-	/*[>}<]*/
-
-	/*for (uint i = 0; i < tile_dim; i += get_local_size(0)) {*/
+		/*for (uint i = 0; i < tile_dim; i += get_local_size(0)) {*/
 		/*if (x + i >= n || y >=m ) {*/
 			/*return;*/
 		/*}*/
@@ -85,23 +53,40 @@ void compute_deviation(global float *d_out, global float *d_in, float mean, uint
 		/*d_out[(x + i) * m + y] = tile[(get_local_id(0) + i) * tile_dim  + get_local_id(1)];*/
 	/*}*/
 
-	/*[>if (get_group_id(0) == 2 && get_group_id(1) == 0) {<]*/
-		/*[>d_out[get_local_id(0) * m + get_local_id(1)] = 99 + get_local_id(0);<]*/
-
-	/*[>}<]*/
 
 /*}*/
 
-/*void transpose(global uchar *d_out, const global uchar *d_in, uint m, uint n) {*/
-
 kernel
-void transpose(global uchar *d_out, const global uchar *d_in, uint m, uint n) {
-	uint i = get_global_id(0);
-	uint j = get_global_id(1);
-	if (i < m && j < n) {
-		d_out[j * m + i] = d_in[i * n + j];
+void transpose(global uchar *d_out, global uchar *d_in, int m, int n, local uchar *ldata) {
+	int gid_x = get_global_id(0);
+	int gid_y = get_global_id(1);
+	int tid_x = get_local_id(0);
+	int tid_y = get_local_id(1);
+	/*int n_threads_x = get_local_size(1);*/
+	int n_threads_x = 16;
+
+	if (gid_x < n && gid_y < m) {
+		ldata[tid_y * (n_threads_x + 1) + tid_x] = d_in[gid_y * n + gid_x];
 	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	gid_x = get_group_id(1) * n_threads_x + get_local_id(0);
+	gid_y = get_group_id(0) * n_threads_x + get_local_id(1);
+	if (gid_x < m && gid_y < n) {
+		d_out[gid_y * n + gid_x] = ldata[tid_x * (n_threads_x + 1) + tid_y];
+	}
+
 }
+
+/*kernel*/
+/*void transpose(global uchar *d_out, const global uchar *d_in, int m, int n, local uchar *ldata) {*/
+	/*int gid_x = get_global_id(0);*/
+	/*int gid_y = get_global_id(1);*/
+	/*if (gid_x < m && gid_y < n) {*/
+		/*d_out[gid_y * m + gid_x] = d_in[gid_x * n + gid_y];*/
+	/*}*/
+/*}*/
 
 
 kernel
@@ -272,22 +257,172 @@ void constant_row_mask(global uchar *data, global uchar *mask, uint m, uint n) {
 	}
 }
 
-kernel 
-void edge_threshold(global uchar *mask, global uchar* mads, global uchar *d_in, float threshold, uint m, uint n) {
-	int i = get_global_id(0);
-	int j = get_global_id(1) + 1;
+kernel
+void sum_threshold(global uchar *mask_out, global uchar *d_in, global uchar *mask, global uchar *thresholds, int window_size, int m, int n, local float *ldata, local float *lmask, local float *lthresholds) {
+	int gid_x = get_global_id(0);
+	int gid_y = get_global_id(1);
+	/*int tid_x = get_local_id(0);*/
+	/*int tid_y = get_local_id(1);*/
+	/*int tile_width = get_local_size(1) + window_size;*/
+	/*if (gid_x < m && gid_y < n) {*/
+		/*ldata[tid_x * tile_width + tid_y] = d_in[gid_x * n + gid_y];*/
+		/*lmask[tid_x * tile_width + tid_y] = mask[gid_x * n + gid_y];*/
+	/*}*/
 
-	if (i >= m || j >= n - 1) { 
+	/*if (tid_y == 0) {*/
+		/*lthresholds[tid_x] = thresholds[gid_x];*/
+	/*}*/
+
+	/*int d = get_local_size(0) - tid_y - 1;  */
+	/*if (d <= window_size && gid_y + window_size < n) {*/
+		/*ldata[tid_x * tile_width + tid_y + window_size] = d_in[gid_x * n + gid_y + window_size];*/
+		/*lmask[tid_x * tile_width + tid_y + window_size] = mask[gid_x * n + gid_y + window_size];*/
+	/*}*/
+
+	/*barrier(CLK_LOCAL_MEM_FENCE);*/
+
+
+	if (gid_x >= m || gid_y >= n - window_size + 1) {
 		return;
-	}
-
-	uchar window_stat = d_in[i * n + j];
-	float value = (float) min(abs(window_stat - d_in[i * n + j - 1]), abs(window_stat - d_in[i * n + j + 1]));
-	if (mads[i] != 0 && fabs(value / mads[i]) > (1.4826 * threshold)) {
-		mask[i * n + j]	= 1;
-	}
 	
+	}
 
+
+	float window_sum = 0;
+	int count = 0;
+	for (int i = 0; i < window_size; i++) {
+		if (mask[gid_x * n + gid_y + i] != 1) {
+		/*if (lmask[tid_x * tile_width + tid_y + i] != 1) {*/
+			count += 1;
+			window_sum += d_in[gid_x * n + gid_y + i];
+			/*window_sum += ldata[tid_x * tile_width + tid_y + i];*/
+		}
+	}
+
+	if (window_sum > thresholds[gid_x] * count) {
+	/*if (window_sum > lthresholds[tid_x] * count) {*/
+		for (int i = 0; i < window_size; i++) {
+			mask_out[gid_x * n + gid_y + i] = 1;
+		}
+	}
+
+
+}
+/*kernel */
+/*void edge_threshold(global uchar *mask_out, global uchar* d_in, global uchar *mask, global uchar *mads, float threshold, int window_size, int m, int n, local float *ldata, local float *lmads, local float *lmask) {*/
+	/*int gid_x = get_global_id(0);*/
+	/*int gid_y = get_global_id(1) + 1;*/
+	/*int tid_x = get_local_id(0);*/
+	/*int tid_y = get_local_id(1) + 1;*/
+	/*int tile_width = 1 + get_local_size(1) + window_size;*/
+	/*int tid = tid_x * tile_width + tid_y;*/
+	/*int gid = gid_x * n + gid_y;*/
+
+	
+	/*if (gid_x < m && gid_y < n) {*/
+		/*[>[>[>ldata[tid_x * tile_width + tid_y] = d_in[gid_x * n + gid_y];<]<]<]*/
+		/*ldata[tid] = d_in[gid];*/
+		/*[>[>[>[>[>lmask[tid_x * tile_width + tid_y] = mask[gid_x * n + gid_y];<]<]<]<]<]*/
+	/*}*/
+
+	/*if (tid_y == 1) {*/
+		/*lmads[tid_x] = mads[gid_x];*/
+		/*[>[>[>ldata[tid_x * tile_width + tid_y - 1] = d_in[gid_x * n + gid_y - 1];<]<]<]*/
+		/*ldata[tid - 1] = d_in[gid - 1];*/
+	/*}*/
+	/*int d = get_local_size(0) - tid_y - 1;  */
+	/*if (d <= window_size && gid_y + window_size < n) {*/
+		/*[>[>[>ldata[tid_x * tile_width + tid_y + window_size] = d_in[gid_x * n + gid_y + window_size];<]<]<]*/
+		/*ldata[tid + window_size] = d_in[gid + window_size];*/
+		/*[>[>[>[>[>lmask[tid_x * tile_width + tid_y + window_size] = mask[gid_x * n + gid_y + window_size];<]<]<]<]<]*/
+	/*}*/
+
+	/*barrier(CLK_LOCAL_MEM_FENCE);*/
+
+	/*[>if (gid_x >= m || gid_y >= n - window_size || mask[gid_x * n + gid_y - 1] == 1 || mask[gid_x * n + gid_y + window_size] == 1) { <]*/
+	/*[>if (gid_x >= m || gid_y >= n - window_size || lmask[tid_x * tile_width + tid_y - 1] == 1 || lmask[tid_x * tile_width + tid_y + window_size] == 1) { <]*/
+	/*for (int w = 1; w <= window_size; w++) {*/
+	/*if (gid_x >= m || gid_y >= n - window_size) { */
+		/*return;*/
+	/*}*/
+
+	/*float window_stat = 0;*/
+	/*for (int i = 0; i < window_size; i++) {*/
+		/*[>window_stat += ldata[tid_x * tile_width + tid_y + i];<]*/
+		/*window_stat += ldata[tid + i];*/
+		/*[>window_stat += d_in[gid_x * n + gid_y + i];<]*/
+	/*}*/
+	/*window_stat /= window_size;*/
+	/*float value = (float) min(fabs(window_stat - ldata[tid - 1]), fabs(window_stat - ldata[tid + window_size]));*/
+	/*[>float value = (float) min(fabs(window_stat - d_in[gid_x * n + gid_y - 1]), fabs(window_stat - d_in[gid_x * n + gid_y + window_size]));<]*/
+	/*[>if (value / mads[gid_x] > (1.4826 * threshold)) {<]*/
+	/*if (value / lmads[tid_x] > (1.4826 * threshold)) {*/
+		/*for (int i = 0; i < window_size; i++) {*/
+			/*mask_out[gid + i] = 1;*/
+		/*}*/
+
+	/*}*/
+	/*}*/
+/*}*/
+kernel
+void edge_threshold(global uchar *mask_out, global uchar* d_in, global uchar *mask, global uchar *mads, float threshold, int window_size, int m, int n, local float *ldata, local float *lmads, local float *lmask) {
+	int gid_x = get_global_id(0);
+	int gid_y = get_global_id(1) + 1;
+	int tid_x = get_local_id(0);
+	int tid_y = get_local_id(1) + 1;
+	int tile_width = 1 + get_local_size(1) + window_size;
+	int tid = tid_x * tile_width + tid_y;
+	int gid = gid_x * n + gid_y;
+
+	
+	if (gid_x < m && gid_y < n) {
+		/*[>[>[>ldata[tid_x * tile_width + tid_y] = d_in[gid_x * n + gid_y];<]<]<]*/
+		ldata[tid] = d_in[gid];
+		/*[>[>[>[>[>lmask[tid_x * tile_width + tid_y] = mask[gid_x * n + gid_y];<]<]<]<]<]*/
+	}
+
+	if (tid_y == 1) {
+		lmads[tid_x] = mads[gid_x];
+		/*[>[>[>ldata[tid_x * tile_width + tid_y - 1] = d_in[gid_x * n + gid_y - 1];<]<]<]*/
+		ldata[tid - 1] = d_in[gid - 1];
+	}
+	int d = get_local_size(0) - tid_y - 1;  
+	if (d <= window_size && gid_y + window_size < n) {
+		/*[>[>[>ldata[tid_x * tile_width + tid_y + window_size] = d_in[gid_x * n + gid_y + window_size];<]<]<]*/
+		ldata[tid + window_size] = d_in[gid + window_size];
+		/*[>[>[>[>[>lmask[tid_x * tile_width + tid_y + window_size] = mask[gid_x * n + gid_y + window_size];<]<]<]<]<]*/
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	/*if (gid_x >= m || gid_y >= n - window_size || mask[gid_x * n + gid_y - 1] == 1 || mask[gid_x * n + gid_y + window_size] == 1) { */
+	/*if (gid_x >= m || gid_y >= n - window_size || lmask[tid_x * tile_width + tid_y - 1] == 1 || lmask[tid_x * tile_width + tid_y + window_size] == 1) { */
+	for (int w = 1; w <= window_size; w++) {
+		if (gid_x >= m || gid_y >= n - w) { 
+			continue;
+		}
+
+		float window_stat = 0;
+		for (int i = 0; i < w; i++) {
+			for (int j = 0; j < w; j++) {
+			
+				window_stat += ldata[tid_x * tile_width + tid_y + j];
+			
+			}
+			/*window_stat += ldata[tid + i];*/
+			/*window_stat += d_in[gid_x * n + gid_y + i];*/
+		}
+		window_stat /= w;
+		float value = (float) min(fabs(window_stat - ldata[tid - 1]), fabs(window_stat - ldata[tid + w]));
+		/*float value = (float) min(fabs(window_stat - d_in[gid_x * n + gid_y - 1]), fabs(window_stat - d_in[gid_x * n + gid_y + window_size]));*/
+		/*if (value / mads[gid_x] > (1.4826 * threshold)) {*/
+		if (value / lmads[tid_x] > (1.4826 * threshold)) {
+			for (int i = 0; i < w; i++) {
+				mask_out[gid + i] = 1;
+			}
+
+		}
+	}
 }
 	
 	
@@ -376,91 +511,71 @@ void compute_mads(global uchar *mads, global uchar *medians, global uchar *data,
 		
 }
 
-kernel void compute_means(__global float *d_out, __global uchar *d_in, uint m, uint n, __local int* sdata) {
-	unsigned int gid = get_global_id(0);
-	uint sdata_index = get_local_id(0) * get_local_size(1) + get_local_id(1);
-	sdata[sdata_index] = 0;
-	if (gid >= m) {
-		return;
+kernel void compute_means(global float *d_out, global uchar *d_in, int m, int n, local volatile int *ldata) {
+	int gid = get_global_id(0);
+	int tid = get_local_id(1);
+	int lid = get_local_id(0) * get_local_size(1) + tid; // index into local memory/
+	if (gid >= m) return;
+
+	ldata[lid] = 0;
+	for (int i = tid; i < n; i += get_local_size(1)) {
+		ldata[lid] += d_in[gid * n + i];
 	}
-	for (uint i = get_local_id(1); i < n; i += get_local_size(1)) {
-		sdata[sdata_index] += d_in[gid * n + i];
-	}
-	barrier(CLK_LOCAL_MEM_FENCE);
-	/*uint k = get_local_id(0) * get_local_size(1);*/
-	if (get_local_id(1) == 0) {
-		for (uint i = 1; i < get_local_size(1); i++) {
-			sdata[sdata_index] += sdata[sdata_index + i];
-		}	
-		d_out[gid] = (float) sdata[sdata_index] / n;
-	}
-
-	
-	
-
-}
-
-kernel void reduce(__global float *g_idata, __global float *g_odata, unsigned int n, __local volatile float* sdata) {
-	// perform first level of reduction,
-	// reading from global memory, writing to shared memory
-	unsigned int tid = get_local_id(0);
-	unsigned int i = get_group_id(0)*(get_local_size(0)*2) + get_local_id(0);
-
-	sdata[tid] = (i < n) ? g_idata[i] : 0;
-	if (i + get_local_size(0) < n) 
-		sdata[tid] += g_idata[i+get_local_size(0)];  
 
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	// do reduction in shared mem
-	#pragma unroll 1
-	for(unsigned int s = get_local_size(0)/2; s>32; s>>=1) {
-		if (tid < s) {
-			sdata[tid] += sdata[tid + s];
-		}
-		barrier(CLK_LOCAL_MEM_FENCE);
+	if (tid < 64) {
+		ldata[lid] += ldata[lid + 64];
 	}
+	barrier(CLK_LOCAL_MEM_FENCE);
 
-	uint blockSize = get_local_size(0);
 	if (tid < 32) {
-		if (blockSize >=  64) { sdata[tid] += sdata[tid + 32]; }
-		if (blockSize >=  32) { sdata[tid] += sdata[tid + 16]; }
-		if (blockSize >=  16) { sdata[tid] += sdata[tid +  8]; }
-		if (blockSize >=   8) { sdata[tid] += sdata[tid +  4]; }
-		if (blockSize >=   4) { sdata[tid] += sdata[tid +  2]; }
-		if (blockSize >=   2) { sdata[tid] += sdata[tid +  1]; }
+		ldata[lid] += ldata[lid + 32]; 
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid + 16];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  8];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  4];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  2];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  1];
 	}
 
-	// write result for this block to global mem 
-	if (tid == 0) g_odata[get_group_id(0)] = sdata[0];
+	if (tid == 0) d_out[gid] = (float) ldata[lid] / n;
+
+	
+	
+
 }
 
-/*kernel */
-/*void reduce(global float *in_data, global float *out_data, uint len, local float *local_mem) {*/
-	/*uint i = get_global_id(0);*/
-	/*uint local_i = get_local_id(0);*/
-	/*if (i >= len) {*/
-		/*local_mem[get_local_id(0)] = 0;*/
-		/*return;	*/
-	/*}*/
-	/*local_mem[get_local_id(0)] = in_data[i];*/
+kernel void reduce(global float *d_out, global float *d_in, int n, local volatile float *ldata) {
+	int tid = get_local_id(0);
+	int gid = 256 * get_group_id(0) + tid; // Each work group reduces 256 values.
 
-	/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
+	// Read data into shared memory and do first reduce operation.
+	ldata[tid] = d_in[gid] + (gid + 128 < n ? d_in[gid + 128] : 0);
+	barrier(CLK_LOCAL_MEM_FENCE);
 
-	/*uint local_n = get_local_size(0);*/
-	/*uint stride = 1;*/
-	/*while (stride < local_n) {*/
-		/*if (local_i % (2 * stride) == 0 && local_i + stride < local_n) {*/
-			/*local_mem[local_i] += local_mem[local_i + stride];*/
-		/*}*/
-		/*stride *= 2;*/
-		/*barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);*/
-	
-	/*}*/
+	// Do reduce across work group.
+	if (tid < 64) {
+		ldata[tid] += ldata[tid + 64];
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
 
-	/*if (local_i == 0) {*/
-		/*out_data[get_group_id(0)] = local_mem[0];*/
-	/*}*/
+	// Do reduce across warp.
+	if (tid < 32) {
+		ldata[tid] += ldata[tid + 32]; 
+		ldata[tid] += ldata[tid + 16];
+		ldata[tid] += ldata[tid +  8];
+		ldata[tid] += ldata[tid +  4];
+		ldata[tid] += ldata[tid +  2];
+		ldata[tid] += ldata[tid +  1];
+	}
 
-/*}*/
+	// Write result.
+	if (tid == 0) d_out[get_group_id(0)] = ldata[0];
+}
+
 
