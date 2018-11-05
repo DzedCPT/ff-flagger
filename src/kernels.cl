@@ -402,7 +402,8 @@ void replace_rfi(global uchar *d_out,
 	if (gid_x >= m || gid_y >= n) return;
 
 	int gid = gid_x * n + gid_y; 
-	d_out[gid] = m_in[gid] == 1 ? replace_values[gid_x] : d_in[gid];
+	//d_out[gid] = m_in[gid] == 1 ? replace_values[gid_x] : d_in[gid];
+	d_out[gid] = m_in[gid] == 1 ? 0 : d_in[gid];
 
 }
 /*kernel*/

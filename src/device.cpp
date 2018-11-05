@@ -121,14 +121,18 @@ void RFIPipeline::InitMemBuffers (const int mode)
 {
 	data_T = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
 	mask   = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
-	mask_T = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
 
 	if (mode == 1) {
 		freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
 		time_means = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(float));
 		time_temp = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(float));
+	    mask_T = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
 	
 	}
+    if (mode == 2) {
+		freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
+	    freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
+    }
 	//time_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
 	//time_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
 	//freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
@@ -143,65 +147,37 @@ void RFIPipeline::InitMemBuffers (const int mode)
 void RFIPipeline::AAFlagger (const cl::Buffer& data) 
 {
 
-	//queue.enqueueFillBuffer(mask, 0, 0, n_channels * n_samples * sizeof(uint8_t));
+	queue.enqueueFillBuffer(mask, 0, 0, n_channels * n_samples * sizeof(uint8_t));
 
-	//ComputeMads(freq_mads, freq_medians, data, n_channels, n_samples, 500);
-	//EdgeThreshold(mask, freq_mads, data, 3.5, n_channels, n_samples, 12, 12);
+	ComputeMads(freq_mads, freq_medians, data, n_channels, n_samples, 16, 16);
+	EdgeThreshold(mask, data, freq_mads, 3.5, 3, n_channels, n_samples, 1, 512);
 
-	//Transpose(data_T, data, n_channels, n_samples, 12, 12);
-	//Transpose(mask_T, mask, n_channels, n_samples, 12, 12);
+
+	ReplaceRFI(data, data, mask, freq_medians, n_channels, n_samples, 12, 12);
 	
 
-	//ComputeMads(time_mads, time_medians, data_T, n_samples, n_channels, 500);
-	//EdgeThreshold(mask_T, time_mads, data_T, 3.5, n_samples, n_channels, 12, 12);
-	//OutlierDetection(time_medians, n_samples, 5, 3.5, 1000);
-	//ConstantRowMask(mask_T, time_medians, n_samples, n_channels, 500);
-
-	//Transpose(data, data_T, n_samples, n_channels, 12, 12);
-	//Transpose(mask, mask_T, n_samples, n_channels, 12, 12);
-
-	//ReplaceRFI(data, data, mask, freq_medians, n_channels, n_samples, 12, 12);
-
-	//this->queue.enqueueFillBuffer(mask, 0, 0, n * m * sizeof(uint8_t));
-
-	//ComputeMads(time_mads, time_medians, uint_buffer, m, n, 500);
-	//EdgeThreshold(mask, time_mads, uint_buffer, threshold, m, n, 12, 12);
-	//OutlierDetection(time_medians, m, 5, threshold, 1000);
-	//ConstantRowMask(mask, time_medians, m, n, 500);
-
-	//gpu.Transpose(uint_buffer_T, uint_buffer, m, n, 12, 12);
-	//gpu.Transpose(mask_T, mask, m, n, 12, 12);
-
-	//gpu.ComputeMads(freq_mads, freq_medians, uint_buffer_T, n, m, 500);
-	//gpu.EdgeThreshold(mask_T, freq_mads, uint_buffer_T, threshold, n, m, 12, 12);
-
-	//gpu.ReplaceRFI(uint_buffer_T, uint_buffer_T, mask_T, freq_medians, m, n, 12, 12);
-
-	//gpu.Transpose(uint_buffer, uint_buffer_T, n, m, 12, 12);
-	
 }
 
 
 void RFIPipeline::BasicFlagger (const cl::Buffer& data) 
 {
 
-
 	ComputeMedians(freq_medians, data, n_channels, n_samples, 16, 16);
 
 	Transpose(data_T, data, n_channels, n_samples, 16, 16);
 
-	//queue.enqueueFillBuffer(mask_T, 0, 0, n_channels * n_samples * sizeof(uint8_t));
+	queue.enqueueFillBuffer(mask_T, 0, 0, n_channels * n_samples * sizeof(uint8_t));
 
 	ComputeMeans(time_means, data_T, n_samples, n_channels);
-	float mean = FloatReduce(time_temp, time_means, n_samples);
+	float mean = FloatReduce(time_temp, time_means, n_samples) / n_samples;
 	float std  = ComputeStd(time_means, time_temp, mean, n_samples, 1024);
-	DetectOutliers(time_means, time_means, mean, std, 2.5, n_samples, 128);
+	DetectOutliers(time_means, time_means, mean, std, 1, n_samples, 128);
 	MaskRows(mask_T, time_means, n_samples, n_channels, 32, 32);
 
 	Transpose(mask, mask_T, n_samples, n_channels, 12, 12);
 
 
-	gpu.ReplaceRFI(uint_buffer_T, uint_buffer_T, mask_T, freq_medians, m, n, 12, 12);
+	ReplaceRFI(data, data, mask, freq_medians, n_channels, n_samples, 12, 12);
 
 }
 
