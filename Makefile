@@ -1,5 +1,5 @@
 CXX = g++
-SOURCE_FILES = filterbank.cpp device.cpp 
+SOURCE_FILES = filterbank.cpp device.cpp opencl_error_handling.cpp
 
 CFLAGS = -Wall -std=c++11 
 LIBS = -lrt -lOpenCL 
@@ -24,7 +24,7 @@ make: $(OBJS) $(SRCS)
 test: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(TEST_DIR)/tests.cpp -o $(BUILD_DIR)/tests
 	#$(DAS) $(BUILD_DIR)/tests 
-	$(DAS) $(BUILD_DIR)/tests [del]
+	$(DAS) $(BUILD_DIR)/tests 
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) -c $<  -o $@

@@ -93,14 +93,16 @@ int main(int argc, char *argv[]) {
 	float time_seconds = 0;
 	app.add_option("-s,--seconds", time_seconds, "# of seconds that will be processed.", true);
 
-	float threshold = 3.5;
-	app.add_option("-t,--threshold", threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
+	float sigma_threshold = 3.5;
+	app.add_option("-st,--sigma_threshold", threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
 
-    float row_threshold = 0.3;
-	app.add_option("-r,--row_threshold", row_threshold, "", true);
+	int mode = 1;
+	app.add_option("-m,--mode", threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
+    //float row_threshold = 0.3;
+	//app.add_option("-r,--row_threshold", row_threshold, "", true);
 
-	int n = 43776;
-	app.add_option("-n,--num_bins", n, "# of time bins per event.", true);
+	int n = 43657;
+	app.add_option("-n,--num_samples", n, "# of time bins per event.", true);
 
 	CLI11_PARSE(app, argc, argv);
 

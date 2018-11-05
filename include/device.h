@@ -16,29 +16,27 @@
 #include <vector>
 #include <CL/cl.hpp>
 
-
 #include "timing.h"
+#include <opencl_error_handling.h>
+
 
 class RFIPipeline {
 public:
 	
 	// GPU kernels which this class provides a wrapper for.
-	cl::Kernel replace_rfi;
-	cl::Kernel detect_outliers;
-	cl::Kernel compute_medians;
-	cl::Kernel mask_rows;
-	cl::Kernel constant_row_mask;
-	cl::Kernel transpose;
-	cl::Kernel compute_mads;
-	cl::Kernel edge_threshold;
-	cl::Kernel sum_threshold;
 	cl::Kernel reduce;
+	cl::Kernel mask_rows;
+	cl::Kernel transpose;
+	cl::Kernel replace_rfi;
+	cl::Kernel compute_mads;
+	cl::Kernel sum_threshold;
 	cl::Kernel compute_means;
+	cl::Kernel edge_threshold;
+	cl::Kernel compute_medians;
+	cl::Kernel detect_outliers;
 	cl::Kernel compute_deviation;
 
-
-
-	// OpenCL enviroemtn variables.
+	// OpenCL enviroment variables.
 	cl::Program program;
 	cl::Context context;
 	cl::CommandQueue queue;
@@ -47,106 +45,130 @@ public:
 	// cl_int used to get error reporting from OpenCL.
 	cl_int error_code;
 
-	size_t n_channels;
-	size_t n_samples;
-
-
-	INIT_MARK(mark);
-	INIT_TIMER(transpose_timer);
-	INIT_TIMER(medians_timer);
-	INIT_TIMER(detect_outliers_timer);
-	INIT_TIMER(mask_rows_timer);
-	INIT_TIMER(replace_rfi_timer);
-	INIT_TIMER(mad_timer);
-	INIT_TIMER(edge_timer);
-	INIT_TIMER(const_mask_rows_timer);
-	INIT_TIMER(reduce_timer);
-	INIT_TIMER(row_mean_timer);
+	int n_channels;
+	int n_samples;
 
 	cl::Buffer data_T;
 	cl::Buffer mask;
 	cl::Buffer mask_T;
 
-	cl::Buffer time_mads;
-	cl::Buffer time_medians;
-	cl::Buffer freq_mads;
 	cl::Buffer freq_medians;
+	cl::Buffer time_medians;
+
+	cl::Buffer time_mads;
+	cl::Buffer freq_mads;
 
 	cl::Buffer time_means;
 	cl::Buffer time_temp;
+	
+	// ********** Class setup functions  ********** // 
+	
+	RFIPipeline (int _n_channels, int _n_samples);
 
-	cl::Buffer reduction_memory;
-	std::vector<float> partially_reduced;
+	RFIPipeline (cl::Context& context, cl::CommandQueue& queue, 
+			     std::vector<cl::Device>& devices, int _n_channels, 
+				 int _n_samples);
+	
+	void LoadKernels (void);
 
-	// Setup context, queue, devices and kernels.
-	RFIPipeline (cl::Context& context, cl::CommandQueue& queue, std::vector<cl::Device>& devices, size_t _n_channels, size_t _n_samples);
-	RFIPipeline (size_t _n_channels, size_t _n_samples);
-	//~RFIPipeline (void);
+	void InitMemBuffers (const int mode);
 
-	void PrintKernelTimers() {
-		PRINT_TIMER(transpose_timer);
-		PRINT_TIMER(medians_timer);
-		PRINT_TIMER(detect_outliers_timer);
-		PRINT_TIMER(mask_rows_timer);
-		PRINT_TIMER(replace_rfi_timer);
-		PRINT_TIMER(mad_timer);
-		PRINT_TIMER(edge_timer);
-		PRINT_TIMER(const_mask_rows_timer);
-		PRINT_TIMER(reduce_timer);
-		PRINT_TIMER(row_mean_timer);
+	// ********** RFI mitigation pipelines ********** // 
+	
+	void AAFlagger (const cl::Buffer& data);
 
+	void BasicFlagger (const cl::Buffer& data);
 
+	// ********** Memory util functions  ********** // 
+	
+	void WriteToBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
+	{
+		CHECK_CL(queue.enqueueWriteBuffer(buffer, CL_TRUE, 0, size, host_mem));
 	}
-	
 
-	// Util functions for handling GPU memory.
-	cl::Buffer InitBuffer(const cl_mem_flags mem_flag, const size_t size);
+	void ReadFromBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
+	{
+		CHECK_CL(queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size, host_mem));
+	}
 
-	void LoadKernels(void);
-	void InitMemBuffers(void);
-	void WriteToBuffer(void* host_mem, cl::Buffer& buffer, const size_t size);
+	void CopyBuffer (const cl::Buffer& src, const cl::Buffer& dest, const int size) 
+	{
+		CHECK_CL(queue.enqueueCopyBuffer(src, dest, 0, 0, size));
+	}
 
-	void AAFlagger(const cl::Buffer& data);
+	cl::Buffer InitBuffer (const cl_mem_flags mem_flag, const int size) 
+	{
+		return cl::Buffer(context, mem_flag, size);
+	}
 
-	void BasicFlagger(const cl::Buffer& data);
+	// ********** GPU kernels  ********** // 
 
-	void ReadFromBuffer(void* host_mem, cl::Buffer& buffer, const size_t size);
+	float FloatReduce (const cl::Buffer& d_out, 
+			           const cl::Buffer& d_in, 
+					   int n);
 
-	void CopyBuffer (const cl::Buffer& src, cl::Buffer& dest, size_t size);
+	void Transpose (const cl::Buffer& d_out, 
+			        const cl::Buffer& d_in, 
+				    int m, int n, 
+				    int nx, int ny);
 
-	//void Mask(const cl::Buffer& d_out, cl::Buffer& d_in, cl::Buffer& d_mask, uint8_t mask_value, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
-	void ReplaceRFI(const cl::Buffer& d_out, const cl::Buffer& d_in, const cl::Buffer& d_mask, const cl::Buffer& freq_medians, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	void EdgeThreshold (const cl::Buffer& d_out, 
+			            const cl::Buffer& d_in, 
+					    const cl::Buffer& mads, 
+					    float threshold, 
+					    int max_window_size, 
+					    int m, int n, 
+					    int nx, int ny);
 
-	//void MaskRows(const cl::Buffer& data, cl::Buffer& mask, cl::Buffer& medians, size_t m, size_t n, size_t local_size);
-	void MaskRows(const cl::Buffer& d_out, cl::Buffer& mask, size_t m, size_t n, size_t local_size_m, size_t local_size_n);
+	void SumThreshold (cl::Buffer& m_out, 
+			           const cl::Buffer& d_in, 
+					   cl::Buffer& m_in, 
+					   const cl::Buffer& thresholds, 
+					   int max_window_size, 
+					   int m, int n, 
+					   int nx, int ny);
 
-	void ConstantRowMask(const cl::Buffer& data, cl::Buffer& mask, size_t m, size_t n, size_t local_size);
+	void ComputeMads (const cl::Buffer& mads, 
+			          const cl::Buffer& medians, 
+					  const cl::Buffer& d_in, 
+					  int m, int n, 
+					  int nx, int ny);
 
-	void Transpose(const cl::Buffer& d_out, const cl::Buffer& d_in, int m, int n, size_t local_size_m, size_t local_size_n);
-	//void Transpose(cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim, size_t local_size_m);
+	void ComputeMedians (const cl::Buffer& medians, 
+			             const cl::Buffer& data, 
+						 int m, int n, 
+						 int nx, int ny);
 
-	//void Transpose2( cl::Buffer& d_out, cl::Buffer& d_in, size_t m, size_t n, size_t tile_dim);
+	void ComputeMeans (const cl::Buffer& d_out, 
+			           const cl::Buffer& d_in, 
+					   int m, int n);
 
-	void EdgeThreshold(const cl::Buffer& mask_out, const cl::Buffer& d_in, const cl::Buffer& mask, const cl::Buffer& mads, float threshold, int window_size, int m, int n, size_t local_size_m, size_t local_size_n);
+	float ComputeStd (const cl::Buffer& data, 
+			          const cl::Buffer& temp, 
+					  float mean, 
+					  int n, 
+					  int nx);
 
-	void SumThreshold(const cl::Buffer& mask, const cl::Buffer& d_in, const cl::Buffer& mask_in, const cl::Buffer& thresholds, int window_size, int m, int n, size_t local_size_m, size_t local_size_n);
 
-	void ComputeMads(const cl::Buffer& mads, const cl::Buffer& medians, const cl::Buffer& d_in, size_t m, size_t n, size_t local_size);
+	void DetectOutliers(const cl::Buffer& d_out, 
+			            const cl::Buffer& d_in, 
+						float mean, 
+						float std, 
+						float threshold, 
+						int n, 
+						int nx);
 
-	void ComputeMedians(const cl::Buffer& medians, const cl::Buffer& data, size_t m, size_t n, size_t local_size);
+	void MaskRows (const cl::Buffer& m_out, 
+			       const cl::Buffer& m_in, 
+				   int m, int n, 
+				   int nx, int ny);
 
-	void ComputeMeans(const cl::Buffer& d_out, const cl::Buffer& d_in, int m, int n);
-
-	//void OutlierDetection(const cl::Buffer data, size_t len, size_t work_per_thread, float threshold, size_t local_size);
-	
-	void DetectOutliers(const cl::Buffer& d_out, const cl::Buffer& d_in, float mean, float std, float threshold, size_t len, size_t local_size);
-
-	float FloatReduce(cl::Buffer& d_out, cl::Buffer& d_in, int len);
-
-	//void ComputeDeviation(cl::Buffer d_in, cl::Buffer d_out, float mean, size_t len, size_t local_size);
-
-	float ComputeStd(cl::Buffer& data, cl::Buffer& temp, float mean, int n, size_t local_size);
-
+	void ReplaceRFI (const cl::Buffer& d_out, 
+			         const cl::Buffer& d_in, 
+					 const cl::Buffer& m_in, 
+					 const cl::Buffer& new_values, 
+					 int m, int n, 
+					 int nx, int ny);
 	
 
 };
