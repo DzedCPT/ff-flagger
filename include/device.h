@@ -60,14 +60,26 @@ public:
 
 	cl::Buffer time_means;
 	cl::Buffer time_temp;
-	
+
+	struct Params {
+		int mode;
+		int n_iter;
+		int n_samples;
+		int n_channels;
+		int n_padded_samples;
+		float time;
+		float mad_threshold;
+		float std_threshold;
+	};
+
+	const Params params;
+
 	// ********** Class setup functions  ********** // 
 	
-	RFIPipeline (int _n_channels, int _n_samples);
+	RFIPipeline (const Params& params);
 
 	RFIPipeline (cl::Context& context, cl::CommandQueue& queue, 
-			     std::vector<cl::Device>& devices, int _n_channels, 
-				 int _n_samples);
+			     std::vector<cl::Device>& devices, const Params& params);
 	
 	void LoadKernels (void);
 
@@ -75,9 +87,9 @@ public:
 
 	// ********** RFI mitigation pipelines ********** // 
 	
-	void AAFlagger (const cl::Buffer& data);
+	void Flag (const cl::Buffer& data);
 
-	void BasicFlagger (const cl::Buffer& data);
+	//void BasicFlagger (const cl::Buffer& data);
 
 	// ********** Memory util functions  ********** // 
 	
@@ -94,6 +106,11 @@ public:
 	void CopyBuffer (const cl::Buffer& src, const cl::Buffer& dest, const int size) 
 	{
 		CHECK_CL(queue.enqueueCopyBuffer(src, dest, 0, 0, size));
+	}
+
+	void ClearBuffer (const cl::Buffer& buffer, const int size) 
+	{
+		CHECK_CL(queue.enqueueFillBuffer(buffer, 0, 0, size));
 	}
 
 	cl::Buffer InitBuffer (const cl_mem_flags mem_flag, const int size) 
@@ -150,13 +167,13 @@ public:
 					  int nx);
 
 
-	void DetectOutliers(const cl::Buffer& d_out, 
-			            const cl::Buffer& d_in, 
-						float mean, 
-						float std, 
-						float threshold, 
-						int n, 
-						int nx);
+	void DetectOutliers (const cl::Buffer& d_out, 
+			             const cl::Buffer& d_in, 
+						 float mean, 
+						 float std, 
+						 float threshold, 
+						 int n, 
+						 int nx);
 
 	void MaskRows (const cl::Buffer& m_out, 
 			       const cl::Buffer& m_in, 

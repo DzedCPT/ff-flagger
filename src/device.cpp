@@ -31,25 +31,20 @@
 RFIPipeline::RFIPipeline (cl::Context& context, 
 		                  cl::CommandQueue& queue, 
 						  std::vector<cl::Device>& devices, 
-						  int _n_channels, int _n_samples) 
+						  const Params& _params): params(_params)
 {
-	this->n_samples = _n_samples;
-	this->n_channels = _n_channels;
 	this->devices = devices;
 	this->queue = queue;
 	this->context = context;
 
 	this->LoadKernels();
-	//this->InitMemBuffers();
+	this->InitMemBuffers(params.mode);
 
 }
 
 
-RFIPipeline::RFIPipeline (int _n_channels, int _n_samples) 
+RFIPipeline::RFIPipeline (const Params& _params): params(_params)
 {
-	this->n_samples = _n_samples;
-	this->n_channels = _n_channels;
-
 	// Get platform.
 	std::vector<cl::Platform> platforms;
 	CHECK_CL(cl::Platform::get(&platforms));
@@ -82,7 +77,7 @@ RFIPipeline::RFIPipeline (int _n_channels, int _n_samples)
 	queue = cl::CommandQueue(context, devices[0], 0, &error_code); CHECK_CL(error_code);
 
 	this->LoadKernels();
-	//this->InitMemBuffers();
+	this->InitMemBuffers(params.mode);
 }
 
 
@@ -119,20 +114,18 @@ void RFIPipeline::LoadKernels (void)
 
 void RFIPipeline::InitMemBuffers (const int mode) 
 {
-	data_T = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
-	mask   = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
+	data_T = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+	mask   = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+	mask_T = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+	freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
 
 	if (mode == 1) {
-		freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
-		time_means = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(float));
-		time_temp = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(float));
-	    mask_T = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * n_samples * sizeof(uint8_t));
-	
+		time_means = this->InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
+		time_temp = this->InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
 	}
-    if (mode == 2) {
-		freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
-	    freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
-    }
+	if (mode == 2) {
+		freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
+	}
 	//time_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
 	//time_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
 	//freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
@@ -144,42 +137,50 @@ void RFIPipeline::InitMemBuffers (const int mode)
 // ********** RFI mitigation pipelines ********** // 
 
 
-void RFIPipeline::AAFlagger (const cl::Buffer& data) 
+void RFIPipeline::Flag (const cl::Buffer& data) 
 {
+	if (params.mode == 1) {
+		ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, 16, 16);
+		Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
+		ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		ComputeMeans(time_means, data_T, n_samples, params.n_channels);
+		float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
+		float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+		DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
+		MaskRows(mask_T, time_means, params.n_samples, params.n_channels, 32, 32);
+		Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 12, 12);
+		ReplaceRFI(data, data, mask, freq_medians, params.n_channels, params.n_samples, 12, 12);
+	}
 
-	queue.enqueueFillBuffer(mask, 0, 0, n_channels * n_samples * sizeof(uint8_t));
-
-	ComputeMads(freq_mads, freq_medians, data, n_channels, n_samples, 16, 16);
-	EdgeThreshold(mask, data, freq_mads, 3.5, 3, n_channels, n_samples, 1, 512);
-
-
-	ReplaceRFI(data, data, mask, freq_medians, n_channels, n_samples, 12, 12);
-	
-
+	if (params.mode == 2) {
+		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, 16, 16);
+		EdgeThreshold(mask, data, freq_mads, params.mad_threshold, 3, params.n_channels, params.n_samples, 1, 512);
+		ReplaceRFI(data, data, mask, freq_medians, params.n_channels, params.n_samples, 12, 12);
+	}
 }
 
 
-void RFIPipeline::BasicFlagger (const cl::Buffer& data) 
-{
+//void RFIPipeline::BasicFlagger (const cl::Buffer& data) 
+//{
 
-	ComputeMedians(freq_medians, data, n_channels, n_samples, 16, 16);
+	//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, 16, 16);
 
-	Transpose(data_T, data, n_channels, n_samples, 16, 16);
+	//Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
 
-	queue.enqueueFillBuffer(mask_T, 0, 0, n_channels * n_samples * sizeof(uint8_t));
+	//queue.enqueueFillBuffer(mask_T, 0, 0, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 
-	ComputeMeans(time_means, data_T, n_samples, n_channels);
-	float mean = FloatReduce(time_temp, time_means, n_samples) / n_samples;
-	float std  = ComputeStd(time_means, time_temp, mean, n_samples, 1024);
-	DetectOutliers(time_means, time_means, mean, std, 1, n_samples, 128);
-	MaskRows(mask_T, time_means, n_samples, n_channels, 32, 32);
+	//ComputeMeans(time_means, data_T, n_samples, params.n_channels);
+	//float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
+	//float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+	//DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
+	//MaskRows(mask_T, time_means, params.n_samples, params.n_channels, 32, 32);
 
-	Transpose(mask, mask_T, n_samples, n_channels, 12, 12);
+	//Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 12, 12);
 
+	//ReplaceRFI(data, data, mask, freq_medians, params.n_channels, params.n_samples, 12, 12);
 
-	ReplaceRFI(data, data, mask, freq_medians, n_channels, n_samples, 12, 12);
-
-}
+//}
 
 
 // ********** GPU kernels  ********** // 

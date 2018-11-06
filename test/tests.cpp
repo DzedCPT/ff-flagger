@@ -16,7 +16,7 @@
 	REQUIRE(x.size() == y.size()); \
 	for (int i = 0; i < (int) x.size(); ++i) { \
 		if (x[i] != Approx(y[i]).margin(1e-6)) { \
-			CHECK(x[i] == Approx(y[i]).margin(1e-6)); \
+			REQUIRE(x[i] == Approx(y[i]).margin(1e-6)); \
 		} \
 	} 
 
