@@ -28,17 +28,17 @@
 // ********** Class setup functions  ********** // 
 
 
-RFIPipeline::RFIPipeline (cl::Context& context, 
-		                  cl::CommandQueue& queue, 
-						  std::vector<cl::Device>& devices, 
+RFIPipeline::RFIPipeline (cl::Context& _context, 
+		                  cl::CommandQueue& _queue, 
+						  std::vector<cl::Device>& _devices, 
 						  const Params& _params): params(_params)
 {
-	this->devices = devices;
-	this->queue = queue;
-	this->context = context;
+	queue   = _queue;
+	context = _context;
+	devices = _devices;
 
-	this->LoadKernels();
-	this->InitMemBuffers(params.mode);
+	LoadKernels();
+	InitMemBuffers(params.mode);
 
 }
 
@@ -76,8 +76,8 @@ RFIPipeline::RFIPipeline (const Params& _params): params(_params)
 	// Create command queue.
 	queue = cl::CommandQueue(context, devices[0], 0, &error_code); CHECK_CL(error_code);
 
-	this->LoadKernels();
-	this->InitMemBuffers(params.mode);
+	LoadKernels();
+	InitMemBuffers(params.mode);
 }
 
 
@@ -96,42 +96,77 @@ void RFIPipeline::LoadKernels (void)
 	CHECK_CL(program.build(devices));
 	
 	// Create kernels.
-	reduce               = cl::Kernel(program, "reduce", &error_code);               CHECK_CL(error_code);
-	mask_rows            = cl::Kernel(program, "mask_rows", &error_code);            CHECK_CL(error_code);
-	transpose            = cl::Kernel(program, "transpose", &error_code);            CHECK_CL(error_code);
-	compute_mads         = cl::Kernel(program, "compute_mads", &error_code);         CHECK_CL(error_code);
-	sum_threshold        = cl::Kernel(program, "sum_threshold", &error_code);        CHECK_CL(error_code);
-	compute_means        = cl::Kernel(program, "compute_means", &error_code);        CHECK_CL(error_code);
-	edge_threshold       = cl::Kernel(program, "edge_threshold", &error_code);       CHECK_CL(error_code);
-	detect_outliers      = cl::Kernel(program, "detect_outliers", &error_code);      CHECK_CL(error_code);
-	compute_medians      = cl::Kernel(program, "compute_medians", &error_code);      CHECK_CL(error_code);
-	compute_deviation    = cl::Kernel(program, "compute_deviation", &error_code);    CHECK_CL(error_code);
-	replace_rfi_medians  = cl::Kernel(program, "replace_rfi_medians", &error_code);  CHECK_CL(error_code);
-	replace_rfi_constant = cl::Kernel(program, "replace_rfi_constant", &error_code); CHECK_CL(error_code);
+	reduce                 = cl::Kernel(program, "reduce", &error_code);                 CHECK_CL(error_code);
+	mask_rows              = cl::Kernel(program, "mask_rows", &error_code);              CHECK_CL(error_code);
+	transpose              = cl::Kernel(program, "transpose", &error_code);              CHECK_CL(error_code);
+	compute_mads           = cl::Kernel(program, "compute_mads", &error_code);           CHECK_CL(error_code);
+	sum_threshold          = cl::Kernel(program, "sum_threshold", &error_code);          CHECK_CL(error_code);
+	compute_means          = cl::Kernel(program, "compute_means", &error_code);          CHECK_CL(error_code);
+	edge_threshold         = cl::Kernel(program, "edge_threshold", &error_code);         CHECK_CL(error_code);
+	detect_outliers        = cl::Kernel(program, "detect_outliers", &error_code);        CHECK_CL(error_code);
+	compute_medians        = cl::Kernel(program, "compute_medians", &error_code);        CHECK_CL(error_code);
+	compute_deviation      = cl::Kernel(program, "compute_deviation", &error_code);      CHECK_CL(error_code);
+	replace_rfi_medians    = cl::Kernel(program, "replace_rfi_medians", &error_code);    CHECK_CL(error_code);
+	replace_rfi_constant   = cl::Kernel(program, "replace_rfi_constant", &error_code);   CHECK_CL(error_code);
+	mask_row_sum_threshold = cl::Kernel(program, "mask_row_sum_threshold", &error_code); CHECK_CL(error_code);
 
+
+}
+
+
+void RFIPipeline::ReadConfigFile(const std::string config_file_name) {
+	std::ifstream infile(config_file_name);
+	std::string line;
+	std::string token;
+	std::string value;
+
+	Params params;
+	params.mode = 1;
+	params.n_iter = 1;
+	params.std_threshold = 2.5;
+	params.mad_threshold = 3.5;
+	params.rfi_replace_mode = RFIReplaceMode::MEDIANS;
+
+	while (std::getline(infile, line)) {
+		try {
+			if (line[0] == '#' || line.size() == 0) continue;
+
+			value = line.substr(line.rfind(' '), line.size());
+			token = line.substr(0, line.find(' '));
+			if (token == "mode") params.mode = std::stoi(value);
+			else if (token == "n_iter") params.n_iter = std::stoi(value);
+			else if (token == "mad_threshold") params.mad_threshold = std::stof(value);
+			else if (token == "std_threshold") params.std_threshold = std::stof(value);
+			else {
+				throw std::runtime_error(line);;
+			}
+		}
+		catch (...) {
+			std::cerr << "RFI config skipping line: " << line << std::endl;
+		}
+	}
+	
+	
+		//std::cout << line.size() << std::endl;
+	std::cout << params.mad_threshold << std::endl;
 
 }
 
 
 void RFIPipeline::InitMemBuffers (const int mode) 
 {
-	data_T = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-	mask   = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-	mask_T = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-	freq_medians = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
+	data_T = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+	mask   = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+	mask_T = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+	freq_medians = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
 
 	if (mode == 1) {
-		time_means = this->InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
-		time_temp = this->InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
+		time_means = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
+		time_temp = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
 	}
 	if (mode == 2) {
-		freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
+		freq_mads = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
 	}
-	//time_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
-	//time_medians = this->InitBuffer(CL_MEM_READ_WRITE, n_samples * sizeof(uint8_t));
-	//freq_mads = this->InitBuffer(CL_MEM_READ_WRITE, n_channels * sizeof(uint8_t));
-
-
 }
 
 
@@ -140,64 +175,32 @@ void RFIPipeline::InitMemBuffers (const int mode)
 
 void RFIPipeline::Flag (const cl::Buffer& data) 
 {
+	
 	if (params.mode == 1) {
-		Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
-		ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-		ComputeMeans(time_means, data_T, n_samples, params.n_channels, params.n_channels);
-		float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
-		float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
-		DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
-		MaskRows(mask_T, time_means, params.n_samples, params.n_channels, params.n_channels, 32, 32);
-		Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 12, 12);
-		if (params.rfi_mode == 1) {
-			ReplaceRFIConstant(data, data, mask, params.n_channels, params.n_samples, params.n_padded_samples, 12, 12);
-		}
-		else {
-			ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-			ReplaceRFIMedians(data, data, mask, freq_medians, params.n_channels, params.n_samples, params.n_padded_samples, 12, 12);
-		
+		for (int i = 0; i < params.n_iter; i++) {
+			Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
+			ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+			ComputeMeans(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
+			float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
+			float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+			DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
+			MaskRows(mask_T, time_means, params.n_samples, params.n_channels, params.n_channels, 32, 32);
+			Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 12, 12);
+			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 12, 12);
 		}
 	}
 
 	if (params.mode == 2) {
-		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-		ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		EdgeThreshold(mask, data, freq_mads, params.mad_threshold, 3, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
-		if (params.rfi_mode == 1) {
-			ReplaceRFIConstant(data, data, mask, params.n_channels, params.n_samples, params.n_padded_samples, 12, 12);
+		for (int i = 0; i < params.n_iter; i++) {
+			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 12, 12);
 		}
-		else {
-			ReplaceRFIMedians(data, data, mask, freq_medians, params.n_channels, params.n_samples, params.n_padded_samples, 12, 12);
-		}
-
 	}
 }
 
-
-//void RFIPipeline::BasicFlagger (const cl::Buffer& data) 
-//{
-
-	//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, 16, 16);
-
-	//Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
-
-	//queue.enqueueFillBuffer(mask_T, 0, 0, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-
-	//ComputeMeans(time_means, data_T, n_samples, params.n_channels);
-	//float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
-	//float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
-	//DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
-	//MaskRows(mask_T, time_means, params.n_samples, params.n_channels, 32, 32);
-
-	//Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 12, 12);
-
-	//ReplaceRFI(data, data, mask, freq_medians, params.n_channels, params.n_samples, 12, 12);
-
-//}
-
-
 // ********** GPU kernels  ********** // 
-
 
 float RFIPipeline::FloatReduce (const cl::Buffer& d_out, 
 		                        const cl::Buffer& d_in, 
@@ -412,7 +415,6 @@ void RFIPipeline::DetectOutliers (const cl::Buffer& d_out,
 								  int n, 
 								  int nx) 
 {
-
 	CHECK_CL(detect_outliers.setArg(0, d_out));
 	CHECK_CL(detect_outliers.setArg(1, d_in));
 	CHECK_CL(detect_outliers.setArg(2, mean));
@@ -420,13 +422,27 @@ void RFIPipeline::DetectOutliers (const cl::Buffer& d_out,
 	CHECK_CL(detect_outliers.setArg(4, threshold));
 	CHECK_CL(detect_outliers.setArg(5, n));
 
-	//int n_threads_x = nx * ((m + nx - 1) / nx);
 	CHECK_CL(queue.enqueueNDRangeKernel(detect_outliers, cl::NullRange, nx * ((n + nx - 1) / nx), nx));
-
 
 }
 
 
+void RFIPipeline::MaskRowSumThreshold (const cl::Buffer& m_out, 
+					   const cl::Buffer& m_in, 
+					   int m, int n, int N,
+					   int nx, int ny) 
+{
+	//CHECK_CL(mask_rows.setArg(0, m_out));
+	//CHECK_CL(mask_rows.setArg(1, m_in));
+	//CHECK_CL(mask_rows.setArg(2, m));
+	//CHECK_CL(mask_rows.setArg(3, n));
+	//CHECK_CL(mask_rows.setArg(4, N));
+
+	//int n_threads_x = nx * ((m + nx - 1) / nx);
+	//CHECK_CL(queue.enqueueNDRangeKernel(mask_rows, cl::NullRange, cl::NDRange(n_threads_x, ny), cl::NDRange(nx, ny)));
+
+
+}
 
 
 void RFIPipeline::MaskRows(const cl::Buffer& m_out, 
@@ -446,52 +462,61 @@ void RFIPipeline::MaskRows(const cl::Buffer& m_out,
 }
 
 
-void RFIPipeline::ReplaceRFIMedians (const cl::Buffer& d_out, 
-		                             const cl::Buffer& d_in, 
-							 		 const cl::Buffer& m_in, 
-							 	     const cl::Buffer& new_values, 
-							 		 int m, int n, int N,
-							 		 int nx, int ny) 
+void RFIPipeline::ReplaceRFI (const cl::Buffer& d_out, 
+		                      const cl::Buffer& d_in, 
+							  const cl::Buffer& m_in, 
+							  const cl::Buffer& new_values, 
+							  const RFIReplaceMode& mode,
+							  int m, int n, int N,
+							  int nx, int ny) 
 {
-
-
-	CHECK_CL(replace_rfi_medians.setArg(0, d_out));
-	CHECK_CL(replace_rfi_medians.setArg(1, d_in));
-	CHECK_CL(replace_rfi_medians.setArg(2, m_in));
-	CHECK_CL(replace_rfi_medians.setArg(3, new_values));
-	CHECK_CL(replace_rfi_medians.setArg(4, m));
-	CHECK_CL(replace_rfi_medians.setArg(5, n));
-	CHECK_CL(replace_rfi_medians.setArg(6, N));
 
 	int n_threads_x = nx * ((m + nx - 1) / nx);
 	int n_threads_y = ny * ((n + ny - 1) / ny);
-
-	CHECK_CL(queue.enqueueNDRangeKernel(replace_rfi_medians, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+	if (mode == MEDIANS) {
+		CHECK_CL(replace_rfi_medians.setArg(0, d_out));
+		CHECK_CL(replace_rfi_medians.setArg(1, d_in));
+		CHECK_CL(replace_rfi_medians.setArg(2, m_in));
+		CHECK_CL(replace_rfi_medians.setArg(3, new_values));
+		CHECK_CL(replace_rfi_medians.setArg(4, m));
+		CHECK_CL(replace_rfi_medians.setArg(5, n));
+		CHECK_CL(replace_rfi_medians.setArg(6, N));
+		CHECK_CL(queue.enqueueNDRangeKernel(replace_rfi_medians, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+	}
+	else if (mode == ZEROS) {
+		CHECK_CL(replace_rfi_constant.setArg(0, d_out));
+		CHECK_CL(replace_rfi_constant.setArg(1, d_in));
+		CHECK_CL(replace_rfi_constant.setArg(2, m_in));
+		CHECK_CL(replace_rfi_constant.setArg(3, m));
+		CHECK_CL(replace_rfi_constant.setArg(4, n));
+		CHECK_CL(replace_rfi_constant.setArg(5, N));
+		CHECK_CL(queue.enqueueNDRangeKernel(replace_rfi_constant, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+	}
 
 }
 
 
-void RFIPipeline::ReplaceRFIConstant (const cl::Buffer& d_out, 
-		                             const cl::Buffer& d_in, 
-							 		 const cl::Buffer& m_in, 
-							 		 int m, int n, int N,
-							 		 int nx, int ny) 
-{
+//void RFIPipeline::ReplaceRFIConstant (const cl::Buffer& d_out, 
+									 //const cl::Buffer& d_in, 
+									  //const cl::Buffer& m_in, 
+									  //int m, int n, int N,
+									  //int nx, int ny) 
+//{
 
 
-	CHECK_CL(replace_rfi_constant.setArg(0, d_out));
-	CHECK_CL(replace_rfi_constant.setArg(1, d_in));
-	CHECK_CL(replace_rfi_constant.setArg(2, m_in));
-	CHECK_CL(replace_rfi_constant.setArg(3, m));
-	CHECK_CL(replace_rfi_constant.setArg(4, n));
-	CHECK_CL(replace_rfi_constant.setArg(5, N));
+	//CHECK_CL(replace_rfi_constant.setArg(0, d_out));
+	//CHECK_CL(replace_rfi_constant.setArg(1, d_in));
+	//CHECK_CL(replace_rfi_constant.setArg(2, m_in));
+	//CHECK_CL(replace_rfi_constant.setArg(3, m));
+	//CHECK_CL(replace_rfi_constant.setArg(4, n));
+	//CHECK_CL(replace_rfi_constant.setArg(5, N));
 
-	int n_threads_x = nx * ((m + nx - 1) / nx);
-	int n_threads_y = ny * ((n + ny - 1) / ny);
+	//int n_threads_x = nx * ((m + nx - 1) / nx);
+	//int n_threads_y = ny * ((n + ny - 1) / ny);
 
-	CHECK_CL(queue.enqueueNDRangeKernel(replace_rfi_constant, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+	//CHECK_CL(queue.enqueueNDRangeKernel(replace_rfi_constant, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
 
-}
+//}
 
 //void RFIPipeline::MADRows(const cl::Buffer& d_out, cl::Buffer& d_in, size_t mad_size, size_t m, size_t n, size_t local_size_m, size_t local_size_n) {
 	////size_t global_size_m = local_size_m * std::ceil((float) m / (local_size_m * window_size));

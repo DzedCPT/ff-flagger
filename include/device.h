@@ -14,6 +14,7 @@
 #define GPU_ENVIROMENT_H
 
 #include <vector>
+#include <string>
 #include <CL/cl.hpp>
 
 #include "timing.h"
@@ -36,6 +37,7 @@ public:
 	cl::Kernel compute_deviation;
 	cl::Kernel replace_rfi_medians;
 	cl::Kernel replace_rfi_constant;
+	cl::Kernel mask_row_sum_threshold;
 
 	// OpenCL enviroment variables.
 	cl::Program program;
@@ -45,9 +47,6 @@ public:
 
 	// cl_int used to get error reporting from OpenCL.
 	cl_int error_code;
-
-	int n_channels;
-	int n_samples;
 
 	cl::Buffer data_T;
 	cl::Buffer mask;
@@ -62,16 +61,17 @@ public:
 	cl::Buffer time_means;
 	cl::Buffer time_temp;
 
+	enum RFIReplaceMode {MEDIANS, ZEROS};
+
 	struct Params {
 		int mode;
-		int rfi_mode;
 		int n_iter;
 		int n_samples;
 		int n_channels;
 		int n_padded_samples;
-		float time;
 		float mad_threshold;
 		float std_threshold;
+		RFIReplaceMode rfi_replace_mode;
 	};
 
 	const Params params;
@@ -87,11 +87,11 @@ public:
 
 	void InitMemBuffers (const int mode);
 
+	static void ReadConfigFile(const std::string file_name);
+
 	// ********** RFI mitigation pipelines ********** // 
 	
 	void Flag (const cl::Buffer& data);
-
-	//void BasicFlagger (const cl::Buffer& data);
 
 	// ********** Memory util functions  ********** // 
 	
@@ -177,24 +177,24 @@ public:
 						 int n, 
 						 int nx);
 
+	void MaskRowSumThreshold (const cl::Buffer& m_out, 
+							  const cl::Buffer& m_in, 
+							  int m, int n, int N,
+							  int nx, int ny);
+
+
 	void MaskRows (const cl::Buffer& m_out, 
 			       const cl::Buffer& m_in, 
 				   int m, int n, int N,
 				   int nx, int ny);
 
-	void ReplaceRFIMedians (const cl::Buffer& d_out, 
-			                const cl::Buffer& d_in, 
-					 		const cl::Buffer& m_in, 
-					 		const cl::Buffer& new_values, 
-					 		int m, int n, int N,
-					 		int nx, int ny);
-	
-
-	void ReplaceRFIConstant (const cl::Buffer& d_out, 
-			                 const cl::Buffer& d_in, 
-					         const cl::Buffer& m_in, 
-					         int m, int n, int N,
-					 		 int nx, int ny);
+	void ReplaceRFI (const cl::Buffer& d_out, 
+			         const cl::Buffer& d_in, 
+					 const cl::Buffer& m_in, 
+					 const cl::Buffer& new_values, 
+					 const RFIReplaceMode& mode,
+					 int m, int n, int N,
+					 int nx, int ny);
 	
 
 };

@@ -377,6 +377,21 @@ void detect_outliers(global float *d_out,
 
 
 kernel 
+void mask_row_sum_threshold(global uchar *m_out, 
+						   global float *m_in, 
+						   int m, int n, int N) 
+{
+	/*int gid_m = get_global_id(0);*/
+	/*if (gid_m < m && m_in[gid_m] == 1) {*/
+		/*int group_size_n = get_local_size(1);*/
+		/*for (int i = get_local_id(1); i < n; i += group_size_n) {*/
+			/*m_out[gid_m * N + i] = 1;*/
+		/*}*/
+	/*}*/
+}
+
+
+kernel 
 void mask_rows(global uchar *m_out, 
 		       global float *m_in, 
 			   int m, int n, int N) 

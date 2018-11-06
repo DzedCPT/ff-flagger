@@ -45,8 +45,8 @@ int local_size;
 
 // Random number generation.
 std::random_device rd;     
-std::mt19937 rng(rd()); 
-//std::mt19937 rng(5); 
+//std::mt19937 rng(rd()); 
+std::mt19937 rng(5); 
 std::uniform_int_distribution<int> uni;
 
 int RandInt (int min, int max) {
@@ -412,6 +412,38 @@ TEST_CASE( "Test: Create outlier mask using mean and std.", "[DetectOutliers]" )
 }
 
 
+TEST_CASE( "Test:Replace masked values with row median.", "[MaskRowThreshold]" ) 
+{
+	for (int test = 0; test < 10; test++) {
+		InitExperiment(1000, 1000, 0, 255);
+
+		std::vector<uint8_t> mask(m * N);
+
+		// Generate random mask.
+		for (auto& v: mask) { v = (0.5 < std::uniform_real_distribution<>(0, 1)(rng)); } ;
+
+		cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * N * sizeof(uint8_t));
+		gpu.WriteToBuffer(mask.data(), d_mask, m * N * sizeof(uint8_t));
+
+		// Sequential Implementation.
+		for (int i = 0; i < m; i++) {
+			if (std::accumulate(mask.begin() + i * N, mask.begin() + (i * N) + n, 0) > n / 3) {
+				std::accumulate(mask.begin() + i * N, mask.begin() + (i * N) + n, 1);
+			}	
+			
+		}
+
+		// GPU.	
+		gpu.MaskRowSumThreshold(d_mask, d_mask, m, n, N, 16, 16);
+		gpu.ReadFromBuffer(results.data(), d_mask, m * N *sizeof(uint8_t));
+		CHECK_VEC_EQUAL(results, mask);
+
+	}
+
+}
+
+
+
 TEST_CASE( "Test: Set masked rows to 1s.", "[MaskRows]" ) 
 {
 	for (int test = 0; test < 10; test++) {
@@ -464,7 +496,7 @@ TEST_CASE( "Test: Replace masked values with row median.", "[ReplaceRFIMedians]"
 		gpu.WriteToBuffer(mask.data(), d_mask, m * N * sizeof(uint8_t));
 		cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
 		gpu.WriteToBuffer(medians.data(), d_medians, m * sizeof(uint8_t));
-		gpu.ReplaceRFIMedians(d_out, d_in, d_mask, d_medians,  m, n, N, 25, 25);
+		gpu.ReplaceRFI(d_out, d_in, d_mask, d_medians, RFIPipeline::RFIReplaceMode::MEDIANS, m, n, N, 25, 25);
 		gpu.ReadFromBuffer(results.data(), d_out, m * N *sizeof(uint8_t));
 		bool passed = true;
 		for (int i = 0; i < m; i++) {
@@ -502,7 +534,7 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 		// GPU.	
 		cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * N * sizeof(uint8_t));
 		gpu.WriteToBuffer(mask.data(), d_mask, m * N * sizeof(uint8_t));
-		gpu.ReplaceRFIConstant(d_out, d_in, d_mask, m, n, N, 32, 32);
+		gpu.ReplaceRFI(d_out, d_in, d_mask, d_mask, RFIPipeline::RFIReplaceMode::ZEROS, m, n, N, 32, 32);
 		gpu.ReadFromBuffer(results.data(), d_out, m * N * sizeof(uint8_t));
 		bool passed = true;
 		for (int i = 0; i < m; i++) {

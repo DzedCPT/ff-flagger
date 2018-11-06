@@ -1,6 +1,7 @@
 #include "CLI11.hpp"
 #include <iostream>
 #include <string>
+#include <assert.h>
 #include "filterbank.h"
 #include "timing.h"
 #include "device.h"
@@ -28,21 +29,18 @@
 
 void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file, 
 		               FilterBank<uint8_t>& out_fil_file, 
-					   const RFIPipeline::Params& params)
+					   const RFIPipeline::Params& params,
+					   const float& time)
 {
-	std::vector<uint8_t> spectra;
+	std::vector<uint8_t> spectra(params.n_channels * params.n_samples);
 	RFIPipeline rfi_pipeline(params);
 
 	cl::Buffer uint_buffer   = rfi_pipeline.InitBuffer(CL_MEM_READ_WRITE, params.n_samples * in_fil_file.header.nchans * sizeof(uint8_t));
 	cl::Buffer uint_buffer_T = rfi_pipeline.InitBuffer(CL_MEM_READ_WRITE, params.n_samples * in_fil_file.header.nchans * sizeof(uint8_t));
 
-
-    INIT_TIMER(timer);
-    INIT_MARK(mark);
-
-    in_fil_file.nbins_per_block = params.n_samples;
-    float total_time = (params.time != 0) ? params.time : in_fil_file.nbins * in_fil_file.header.tsamp;
-    while(in_fil_file.tellg() < total_time) {
+	in_fil_file.nbins_per_block = params.n_samples;
+	float total_time = (time != 0) ? time : in_fil_file.nbins * in_fil_file.header.tsamp;
+	while(in_fil_file.tellg() < total_time) {
 
 		// Read in the data.
 		in_fil_file.ReadInSpectraBlock(spectra);
@@ -51,20 +49,19 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 
 		//MARK_TIME(mark);
 
-		rfi_pipeline.Flag(uint_buffer);
+		//rfi_pipeline.Flag(uint_buffer);
 
 		//ADD_TIME_SINCE_MARK(timer, mark);
 		rfi_pipeline.Transpose(uint_buffer_T, uint_buffer, in_fil_file.header.nchans, params.n_samples, 12, 12);
 		rfi_pipeline.ReadFromBuffer(spectra.data(), uint_buffer_T, spectra.size() * sizeof(uint8_t));
 
 		out_fil_file.AppendSpectra(spectra);
-        std::cout << "\rProgress "
-                  << std::min(in_fil_file.tellg() / total_time, (float) 1.0) * 100
-                  << " % " << std::flush;
-    }
-    std::cout << std::endl;
+		std::cout << "\rProgress "
+				  << std::min(in_fil_file.tellg() / total_time, (float) 1.0) * 100
+				  << " % " << std::flush;
+	}
+	std::cout << std::endl;
 
-    //PRINT_TIMER(timer);
 
 }
 
@@ -82,8 +79,8 @@ int main (int argc, char *argv[])
 	params.mode = 1;
 	app.add_option("-m,--mode", params.mode, "# of standard deviations from the mean required for the band to be flagged.", true);
 	
-	params.time = 0;
-	app.add_option("-s,--seconds", params.time, "# of seconds that will be processed.", true);
+	float time = 0;
+	app.add_option("-s,--seconds", time, "# of seconds that will be processed.", true);
 
 	params.n_samples = 43657;
 	app.add_option("--num_samples", params.n_samples, "# of time bins per event.", true);
@@ -93,22 +90,24 @@ int main (int argc, char *argv[])
 	app.add_option("-n,--num_iteratations", params.n_iter, "# of time bins per event.", true);
 
 	params.mad_threshold = 3.5;
-	app.add_option("--mad_threshold",params.mad_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
+	app.add_option("--mad_threshold", params.mad_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
 
 	params.std_threshold = 2.5;
-	app.add_option("--std_threshold",params.std_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
+	app.add_option("--std_threshold", params.std_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
 
-	params.rfi_mode = 2;
-	app.add_option("--rfi_mode", params.rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
+	int rfi_mode = 2;
+	app.add_option("--rfi_mode", rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
+	assert(rfi_mode == 1 || rfi_mode == 2);
+	params.rfi_replace_mode = (rfi_mode == 1 ? RFIPipeline::RFIReplaceMode::ZEROS : RFIPipeline::RFIReplaceMode::MEDIANS);
 
 
 	CLI11_PARSE(app, argc, argv);
 
 	FilterBank<uint8_t> in_fil_file(in_file_path);
 	FilterBank<uint8_t> out_fil_file(out_file_path, in_fil_file.header);
-
+	
 	params.n_channels = in_fil_file.header.nchans;
 
-	ProcessFilterBank(in_fil_file, out_fil_file, params);
+	ProcessFilterBank(in_fil_file, out_fil_file, params, time);
 
 }
