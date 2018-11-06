@@ -307,14 +307,14 @@ void compute_means(global float *d_out,
 				   int m, int n, int N,
 				   local int *ldata) 
 {
-	int gid = get_global_id(0);
+	int gid_x = get_global_id(0);
 	int tid = get_local_id(1);
 	int lid = get_local_id(0) * get_local_size(1) + tid; // index into local memory/
-	if (gid >= m) return;
+	if (gid_x >= m) return;
 
 	ldata[lid] = 0;
 	for (int i = tid; i < n; i += get_local_size(1)) {
-		ldata[lid] += d_in[gid * N + i];
+		ldata[lid] += d_in[gid_x * N + i];
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -338,7 +338,7 @@ void compute_means(global float *d_out,
 		ldata[lid] += ldata[lid +  1];
 	}
 
-	if (tid == 0) d_out[gid] = (float) ldata[lid] / n;
+	if (tid == 0) d_out[gid_x] = (float) ldata[lid] / n;
 
 
 }
@@ -377,17 +377,50 @@ void detect_outliers(global float *d_out,
 
 
 kernel 
-void mask_row_sum_threshold(global uchar *m_out, 
-						   global float *m_in, 
-						   int m, int n, int N) 
+void mask_row_sum_threshold (global uchar *m_out, 
+		           			 global uchar *m_in, 
+				   			 int m, int n, int N,
+				   			 local int *ldata) 
 {
-	/*int gid_m = get_global_id(0);*/
-	/*if (gid_m < m && m_in[gid_m] == 1) {*/
-		/*int group_size_n = get_local_size(1);*/
-		/*for (int i = get_local_id(1); i < n; i += group_size_n) {*/
-			/*m_out[gid_m * N + i] = 1;*/
-		/*}*/
-	/*}*/
+	int gid_x = get_global_id(0);
+	int tid = get_local_id(1);
+	int lid = get_local_id(0) * get_local_size(1) + tid; // index into local memory/
+	if (gid_x >= m) return;
+
+	ldata[lid] = 0;
+	for (int i = tid; i < n; i += get_local_size(1)) {
+		ldata[lid] += m_in[gid_x * N + i];
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (tid < 64) {
+		ldata[lid] += ldata[lid + 64];
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (tid < 32) {
+		ldata[lid] += ldata[lid + 32]; 
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid + 16];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  8];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  4];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  2];
+		barrier(CLK_LOCAL_MEM_FENCE);
+		ldata[lid] += ldata[lid +  1];
+	}
+
+	barrier(CLK_LOCAL_MEM_FENCE);
+	if (tid == 0 && ldata[lid] > 500) {
+		for (int i = 0; i < n; i ++ ) {
+			m_out[gid_x * N + i] = 1;
+		}
+	}
+
+
 }
 
 

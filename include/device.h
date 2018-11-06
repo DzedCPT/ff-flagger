@@ -87,7 +87,7 @@ public:
 
 	void InitMemBuffers (const int mode);
 
-	static void ReadConfigFile(const std::string file_name);
+	static Params ReadConfigFile(const std::string file_name);
 
 	// ********** RFI mitigation pipelines ********** // 
 	
@@ -178,10 +178,8 @@ public:
 						 int nx);
 
 	void MaskRowSumThreshold (const cl::Buffer& m_out, 
-							  const cl::Buffer& m_in, 
-							  int m, int n, int N,
-							  int nx, int ny);
-
+ 					          const cl::Buffer& m_in, 
+					   		  int m, int n, int N);
 
 	void MaskRows (const cl::Buffer& m_out, 
 			       const cl::Buffer& m_in, 

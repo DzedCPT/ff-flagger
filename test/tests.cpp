@@ -412,7 +412,7 @@ TEST_CASE( "Test: Create outlier mask using mean and std.", "[DetectOutliers]" )
 }
 
 
-TEST_CASE( "Test:Replace masked values with row median.", "[MaskRowThreshold]" ) 
+TEST_CASE( "Test: ", "[MaskRowThreshold]" ) 
 {
 	for (int test = 0; test < 10; test++) {
 		InitExperiment(1000, 1000, 0, 255);
@@ -427,15 +427,15 @@ TEST_CASE( "Test:Replace masked values with row median.", "[MaskRowThreshold]" )
 
 		// Sequential Implementation.
 		for (int i = 0; i < m; i++) {
-			if (std::accumulate(mask.begin() + i * N, mask.begin() + (i * N) + n, 0) > n / 3) {
-				std::accumulate(mask.begin() + i * N, mask.begin() + (i * N) + n, 1);
+			if (std::accumulate(mask.begin() + i * N, mask.begin() + (i * N) + n, 0) > 500) {
+				std::fill(mask.begin() + i * N, mask.begin() + (i * N) + n, 1);
 			}	
 			
 		}
 
 		// GPU.	
-		gpu.MaskRowSumThreshold(d_mask, d_mask, m, n, N, 16, 16);
-		gpu.ReadFromBuffer(results.data(), d_mask, m * N *sizeof(uint8_t));
+		gpu.MaskRowSumThreshold(d_mask, d_mask, m, n, N);
+		gpu.ReadFromBuffer(results.data(), d_mask, m * N * sizeof(uint8_t));
 		CHECK_VEC_EQUAL(results, mask);
 
 	}

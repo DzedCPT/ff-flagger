@@ -18,11 +18,11 @@ DAS := prun -np 1 -native '-C TitanX --gres=gpu:1'
 
 make: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(SRC_DIR)/main.cpp -o fflagger
-	$(DAS) ./fflagger -i ~/fake.fil -o ~/del.fil -m 2
+	$(DAS) ./fflagger -i ~/fake.fil -o ~/del.fil -m 0
 
 test: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(TEST_DIR)/tests.cpp -o $(BUILD_DIR)/tests
-	$(DAS) $(BUILD_DIR)/tests [MaskRowThreshold]
+	$(DAS) $(BUILD_DIR)/tests 
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) -c $<  -o $@

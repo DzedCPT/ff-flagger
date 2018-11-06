@@ -35,6 +35,10 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 	std::vector<uint8_t> spectra(params.n_channels * params.n_samples);
 	RFIPipeline rfi_pipeline(params);
 
+	auto begin = std::chrono::high_resolution_clock::now();
+	auto end = std::chrono::high_resolution_clock::now();
+	double rfi_timer = 0.0;
+
 	cl::Buffer uint_buffer   = rfi_pipeline.InitBuffer(CL_MEM_READ_WRITE, params.n_samples * in_fil_file.header.nchans * sizeof(uint8_t));
 	cl::Buffer uint_buffer_T = rfi_pipeline.InitBuffer(CL_MEM_READ_WRITE, params.n_samples * in_fil_file.header.nchans * sizeof(uint8_t));
 
@@ -49,7 +53,11 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 
 		//MARK_TIME(mark);
 
-		//rfi_pipeline.Flag(uint_buffer);
+		begin = std::chrono::high_resolution_clock::now();
+		rfi_pipeline.Flag(uint_buffer);
+		rfi_pipeline.queue.finish();
+		end = std::chrono::high_resolution_clock::now();
+		rfi_timer += std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count();
 
 		//ADD_TIME_SINCE_MARK(timer, mark);
 		rfi_pipeline.Transpose(uint_buffer_T, uint_buffer, in_fil_file.header.nchans, params.n_samples, 12, 12);
@@ -60,7 +68,8 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 				  << std::min(in_fil_file.tellg() / total_time, (float) 1.0) * 100
 				  << " % " << std::flush;
 	}
-	std::cout << std::endl;
+	//std::cout << std::endl;
+	std::cout << "\rRFI mitigation took " << rfi_timer << " milliseconds to process " << total_time << " seconds of data." << std::endl;
 
 
 }
@@ -97,7 +106,7 @@ int main (int argc, char *argv[])
 
 	int rfi_mode = 2;
 	app.add_option("--rfi_mode", rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
-	assert(rfi_mode == 1 || rfi_mode == 2);
+	assert(0 <= rfi_mode && rfi_mode <= 3);
 	params.rfi_replace_mode = (rfi_mode == 1 ? RFIPipeline::RFIReplaceMode::ZEROS : RFIPipeline::RFIReplaceMode::MEDIANS);
 
 
