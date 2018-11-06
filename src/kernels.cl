@@ -58,7 +58,7 @@ void edge_threshold(global uchar *m_out,
 					global uchar *mads, 
 					float threshold, 
 					int max_window_size, 
-					int m, int n, 
+					int m, int n, int N, 
 					local float *ldata, 
 					local float *lmads) 
 {
@@ -68,7 +68,7 @@ void edge_threshold(global uchar *m_out,
 	int tid_y = get_local_id(1) + 1; // 1 offset because first column is skipped.
 	int tile_width = 1 + get_local_size(1) + max_window_size; 
 	int tid = tid_x * tile_width + tid_y;
-	int gid = gid_x * n + gid_y;
+	int gid = gid_x * N + gid_y;
 
 	// Read data into shared local memory.	
 	if (gid_x < m && gid_y < n) {
@@ -129,7 +129,7 @@ void sum_threshold(global uchar *m_out,
 				   global uchar *m_in, 
 				   global uchar *medians, 
 				   int window_size, 
-				   int m, int n, 
+				   int m, int n, int N,
 				   local float *ldata, 
 				   local float *lmask, 
 				   local float *lthresholds) 
@@ -141,7 +141,7 @@ void sum_threshold(global uchar *m_out,
 	int tid_y = get_local_id(1);
 	int tile_width = get_local_size(1) + window_size;
 	int tid = tid_x * tile_width + tid_y;
-	int gid = gid_x * n + gid_y;
+	int gid = gid_x * N + gid_y;
 
 	// Read data into shared local memory.	
 	if (gid_x < m && gid_y < n) {
@@ -197,14 +197,13 @@ kernel
 void compute_mads(global uchar *mads, 
 		          global uchar *medians, 
 				  global uchar *data, 
-				  int m, int n,
+				  int m, int n, int N,
 				  local volatile int *ldata) 
 {
 	int gid_x = get_global_id(0);
 	int lid = get_local_id(0) * 256;
 	int ny = get_local_size(1);
 	int tid_y = get_local_id(1);
-
 
 	if (gid_x >= m) { 
 		return;
@@ -217,7 +216,7 @@ void compute_mads(global uchar *mads,
 
 	int val;
 	for (int i = tid_y; i < n; i += ny) {
-		val = data[gid_x * n + i];
+		val = data[gid_x * N + i];
 		atomic_inc(ldata + lid + val);
 	}
 
@@ -240,7 +239,7 @@ void compute_mads(global uchar *mads,
 	barrier(CLK_LOCAL_MEM_FENCE);
 
 	for (int i = tid_y; i < n; i += ny) {
-		val = abs(data[gid_x * n + i] - medians[gid_x]);
+		val = abs(data[gid_x * N + i] - medians[gid_x]);
 		atomic_inc(ldata + lid + val);
 	}
 
@@ -264,7 +263,7 @@ void compute_mads(global uchar *mads,
 kernel 
 void compute_medians (global uchar *medians, 
 		              global uchar *d_in, 
-					  int m, int n,
+					  int m, int n, int N,
 					  local volatile int *ldata) 
 {
 	int gid_x = get_global_id(0);
@@ -282,7 +281,7 @@ void compute_medians (global uchar *medians,
 
 	int val;
 	for (int i = tid_y; i < n; i += ny) {
-		val = d_in[gid_x * n + i];
+		val = d_in[gid_x * N + i];
 		atomic_inc(ldata + lid + val);
 	}
 
@@ -305,7 +304,7 @@ void compute_medians (global uchar *medians,
 kernel 
 void compute_means(global float *d_out, 
 		           global uchar *d_in, 
-				   int m, int n, 
+				   int m, int n, int N,
 				   local int *ldata) 
 {
 	int gid = get_global_id(0);
@@ -315,7 +314,7 @@ void compute_means(global float *d_out,
 
 	ldata[lid] = 0;
 	for (int i = tid; i < n; i += get_local_size(1)) {
-		ldata[lid] += d_in[gid * n + i];
+		ldata[lid] += d_in[gid * N + i];
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
@@ -378,34 +377,56 @@ void detect_outliers(global float *d_out,
 
 
 kernel 
-void mask_rows(global uchar *m_out, global float *m_in, int m, int n) {
+void mask_rows(global uchar *m_out, 
+		       global float *m_in, 
+			   int m, int n, int N) 
+{
 	int gid_m = get_global_id(0);
 	if (gid_m < m && m_in[gid_m] == 1) {
 		int group_size_n = get_local_size(1);
 		for (int i = get_local_id(1); i < n; i += group_size_n) {
-			m_out[gid_m * n + i] = 1;
+			m_out[gid_m * N + i] = 1;
 		}
 	}
 }
 
 
 kernel
-void replace_rfi(global uchar *d_out, 
-		         global uchar *d_in, 
-				 global uchar *m_in, 
-				 global uchar *replace_values, 
-				 int m, int n) 
+void replace_rfi_medians (global uchar *d_out, 
+		                  global uchar *d_in, 
+				          global uchar *m_in, 
+				          global uchar *replace_values, 
+				          int m, int n, int N) 
 {
 	int gid_x = get_global_id(0);
 	int gid_y = get_global_id(1);
 
 	if (gid_x >= m || gid_y >= n) return;
 
-	int gid = gid_x * n + gid_y; 
-	//d_out[gid] = m_in[gid] == 1 ? replace_values[gid_x] : d_in[gid];
+	int gid = gid_x * N + gid_y; 
+	d_out[gid] = (m_in[gid] == 1 ? replace_values[gid_x] : d_in[gid]);
+
+}
+
+
+kernel
+void replace_rfi_constant(global uchar *d_out, 
+		                  global uchar *d_in, 
+				          global uchar *m_in, 
+				          int m, int n, int N) 
+{
+	int gid_x = get_global_id(0);
+	int gid_y = get_global_id(1);
+
+	if (gid_x >= m || gid_y >= n) return;
+
+	int gid = gid_x * N + gid_y; 
 	d_out[gid] = m_in[gid] == 1 ? 0 : d_in[gid];
 
 }
+
+
+
 /*kernel*/
 /*void transpose(global uchar *d_out, const global uchar *d_in, int m, int n, local uchar *tile) {*/
 	/*int tile_dim = get_local_size(1)*/

@@ -27,7 +27,6 @@ public:
 	cl::Kernel reduce;
 	cl::Kernel mask_rows;
 	cl::Kernel transpose;
-	cl::Kernel replace_rfi;
 	cl::Kernel compute_mads;
 	cl::Kernel sum_threshold;
 	cl::Kernel compute_means;
@@ -35,6 +34,8 @@ public:
 	cl::Kernel compute_medians;
 	cl::Kernel detect_outliers;
 	cl::Kernel compute_deviation;
+	cl::Kernel replace_rfi_medians;
+	cl::Kernel replace_rfi_constant;
 
 	// OpenCL enviroment variables.
 	cl::Program program;
@@ -63,6 +64,7 @@ public:
 
 	struct Params {
 		int mode;
+		int rfi_mode;
 		int n_iter;
 		int n_samples;
 		int n_channels;
@@ -134,7 +136,7 @@ public:
 					    const cl::Buffer& mads, 
 					    float threshold, 
 					    int max_window_size, 
-					    int m, int n, 
+					    int m, int n, int N,
 					    int nx, int ny);
 
 	void SumThreshold (cl::Buffer& m_out, 
@@ -142,23 +144,23 @@ public:
 					   cl::Buffer& m_in, 
 					   const cl::Buffer& thresholds, 
 					   int max_window_size, 
-					   int m, int n, 
+					   int m, int n, int N,
 					   int nx, int ny);
 
 	void ComputeMads (const cl::Buffer& mads, 
 			          const cl::Buffer& medians, 
 					  const cl::Buffer& d_in, 
-					  int m, int n, 
+					  int m, int n, int N,
 					  int nx, int ny);
 
 	void ComputeMedians (const cl::Buffer& medians, 
 			             const cl::Buffer& data, 
-						 int m, int n, 
+						 int m, int n, int N,
 						 int nx, int ny);
 
 	void ComputeMeans (const cl::Buffer& d_out, 
 			           const cl::Buffer& d_in, 
-					   int m, int n);
+					   int m, int n, int N);
 
 	float ComputeStd (const cl::Buffer& data, 
 			          const cl::Buffer& temp, 
@@ -177,15 +179,22 @@ public:
 
 	void MaskRows (const cl::Buffer& m_out, 
 			       const cl::Buffer& m_in, 
-				   int m, int n, 
+				   int m, int n, int N,
 				   int nx, int ny);
 
-	void ReplaceRFI (const cl::Buffer& d_out, 
-			         const cl::Buffer& d_in, 
-					 const cl::Buffer& m_in, 
-					 const cl::Buffer& new_values, 
-					 int m, int n, 
-					 int nx, int ny);
+	void ReplaceRFIMedians (const cl::Buffer& d_out, 
+			                const cl::Buffer& d_in, 
+					 		const cl::Buffer& m_in, 
+					 		const cl::Buffer& new_values, 
+					 		int m, int n, int N,
+					 		int nx, int ny);
+	
+
+	void ReplaceRFIConstant (const cl::Buffer& d_out, 
+			                 const cl::Buffer& d_in, 
+					         const cl::Buffer& m_in, 
+					         int m, int n, int N,
+					 		 int nx, int ny);
 	
 
 };

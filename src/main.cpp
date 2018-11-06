@@ -98,6 +98,10 @@ int main (int argc, char *argv[])
 	params.std_threshold = 2.5;
 	app.add_option("--std_threshold",params.std_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
 
+	params.rfi_mode = 2;
+	app.add_option("--rfi_mode", params.rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
+
+
 	CLI11_PARSE(app, argc, argv);
 
 	FilterBank<uint8_t> in_fil_file(in_file_path);

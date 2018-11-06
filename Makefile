@@ -22,7 +22,6 @@ make: $(OBJS) $(SRCS)
 
 test: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(TEST_DIR)/tests.cpp -o $(BUILD_DIR)/tests
-	#$(DAS) $(BUILD_DIR)/tests 
 	$(DAS) $(BUILD_DIR)/tests 
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
