@@ -21,6 +21,7 @@
 #include <opencl_error_handling.h>
 
 
+
 class RFIPipeline {
 public:
 	
@@ -63,6 +64,10 @@ public:
 
 	enum RFIReplaceMode {MEDIANS, ZEROS};
 
+	std::chrono::time_point<std::chrono::high_resolution_clock> begin;
+
+	std::map<std::string, Time> time_map;
+
 	struct Params {
 		int mode;
 		int n_iter;
@@ -88,6 +93,12 @@ public:
 	void InitMemBuffers (const int mode);
 
 	static Params ReadConfigFile(const std::string file_name);
+
+	void PrintTimers (void) {
+		for (auto iter = time_map.begin(); iter != time_map.end(); iter++) { \
+			std::cout << iter->first << " => " << iter->second.value / 1000 << '\n'; \
+		}
+	}
 
 	// ********** RFI mitigation pipelines ********** // 
 	

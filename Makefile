@@ -1,7 +1,7 @@
 CXX = g++
-SOURCE_FILES = filterbank.cpp device.cpp opencl_error_handling.cpp
+SOURCE_FILES = filterbank.cpp device.cpp opencl_error_handling.cpp 
 
-CFLAGS = -Wall -std=c++11 
+CFLAGS = -Wall -std=c++11 -DTIME
 LIBS = -lrt -lOpenCL 
 INCLUDES = -Iinclude -Iinclude/catch2
 
@@ -18,7 +18,7 @@ DAS := prun -np 1 -native '-C TitanX --gres=gpu:1'
 
 make: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(SRC_DIR)/main.cpp -o fflagger
-	$(DAS) ./fflagger -i ~/fake.fil -o ~/del.fil -m 0
+	$(DAS) ./fflagger -i ~/real.fil -o ~/del.fil -m 1 --rfi_mode 1
 
 test: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(TEST_DIR)/tests.cpp -o $(BUILD_DIR)/tests
