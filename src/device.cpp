@@ -178,6 +178,8 @@ void RFIPipeline::InitMemBuffers (const int mode)
 void RFIPipeline::Flag (const cl::Buffer& data) 
 {
 	if (params.mode == 0) return;
+    
+    begin = std::chrono::high_resolution_clock::now(); 
 	
 	if (params.mode == 2 || params.mode == 3) {
 		for (int i = 0; i < params.n_iter; i++) {
@@ -204,6 +206,8 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		}
 	}
+    end = std::chrono::high_resolution_clock::now(); 
+    time += std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count();
 
 
 }

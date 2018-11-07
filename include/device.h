@@ -63,6 +63,10 @@ public:
 
 	enum RFIReplaceMode {MEDIANS, ZEROS};
 
+    double time = 0.0;
+	std::chrono::time_point<std::chrono::high_resolution_clock> begin;
+	std::chrono::time_point<std::chrono::high_resolution_clock> end;
+
 	struct Params {
 		int mode;
 		int n_iter;
@@ -88,6 +92,14 @@ public:
 	void InitMemBuffers (const int mode);
 
 	static Params ReadConfigFile(const std::string file_name);
+
+    static void PrintParams(const Params& params) {
+        std::cout << "RFI Mode: "        << params.mode << "\n"
+                  << "Num Iterations: "  << params.n_iter << "\n"
+                  << "Sigma Threshold: " << params.std_threshold << "\n"
+                  << "MAD Threshold: "   << params.mad_threshold << std::endl;
+  
+    }
 
 	// ********** RFI mitigation pipelines ********** // 
 	
