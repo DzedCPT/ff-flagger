@@ -3,7 +3,6 @@
 #include <string>
 #include <assert.h>
 #include "filterbank.h"
-#include "timing.h"
 #include "device.h"
 #include <CL/cl.hpp>
 
@@ -70,6 +69,7 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 	}
 	//std::cout << std::endl;
 	std::cout << "\rRFI mitigation took " << rfi_timer << " milliseconds to process " << total_time << " seconds of data." << std::endl;
+	rfi_pipeline.PrintTimers();
 
 
 }

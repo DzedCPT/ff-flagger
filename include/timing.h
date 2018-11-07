@@ -2,35 +2,33 @@
 #ifndef TIMING_H
 #define TIMING_H
 
-#define TIME
+//#define TIME
+
+//#ifdef TIME
+#include <chrono>
+#include <map>
+
+struct Time {
+    double value = 0;
+};
+
 
 #ifdef TIME
-#include <chrono>
-
-//#define INIT_TIMING std::chrono::high_resolution_clock::time_point timer;
-#define INIT_MARK(name) std::chrono::high_resolution_clock::time_point name;
-
 #define MARK_TIME(name) name = std::chrono::high_resolution_clock::now();
 
-#define INIT_TIMER(name) std::chrono::duration<double> name;
-
-#define ADD_TIME_SINCE_MARK(timer, mark) timer += std::chrono::high_resolution_clock::now() - mark;
-
-#define PRINT_TIMER(name) std::cout << #name << " took " << name.count() << " seconds" << std::endl;
+#define ADD_TIME_SINCE(timer_name, mark) \
+	queue.finish(); \
+    time_map[#timer_name].value += \
+	std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now()-mark).count();
 
 #endif
 
 #ifndef TIME
+std::cout << "No rfi kernel timing" << std::endl;
 
-#define INIT_MARK(name);
+#define MARK_TIME(name) 
 
-#define MARK_TIME(name);
-
-#define INIT_TIMER(name);
-
-#define ADD_TIME_SINCE_MARK(timer, mark);
-
-#define PRINT_TIMER(name);
+#define ADD_TIME_SINCE(timer_name, mark) 
 
 #endif
 

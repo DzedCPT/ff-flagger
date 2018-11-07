@@ -21,6 +21,7 @@
 #include <opencl_error_handling.h>
 
 
+
 class RFIPipeline {
 public:
 	
@@ -66,6 +67,7 @@ public:
     double time = 0.0;
 	std::chrono::time_point<std::chrono::high_resolution_clock> begin;
 	std::chrono::time_point<std::chrono::high_resolution_clock> end;
+	std::map<std::string, Time> time_map;
 
 	struct Params {
 		int mode;
@@ -100,6 +102,12 @@ public:
                   << "MAD Threshold: "   << params.mad_threshold << std::endl;
   
     }
+
+	void PrintTimers (void) {
+		for (auto iter = time_map.begin(); iter != time_map.end(); iter++) { \
+			std::cout << iter->first << " => " << iter->second.value / 1000 << '\n'; \
+		}
+	}
 
 	// ********** RFI mitigation pipelines ********** // 
 	
