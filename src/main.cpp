@@ -43,6 +43,8 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 
 	in_fil_file.nbins_per_block = params.n_samples;
 	float total_time = (time != 0) ? time : in_fil_file.nbins * in_fil_file.header.tsamp;
+	std::vector<uint8_t> vec(params.n_channels * params.n_padded_samples);
+	std::tuple<int, int> x;
 	while(in_fil_file.tellg() < total_time) {
 
 		// Read in the data.
@@ -53,7 +55,7 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 		//MARK_TIME(mark);
 
 		begin = std::chrono::high_resolution_clock::now();
-		rfi_pipeline.Flag(uint_buffer);
+		x = rfi_pipeline.Flag(uint_buffer);
 		rfi_pipeline.queue.finish();
 		end = std::chrono::high_resolution_clock::now();
 		rfi_timer += std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count();
@@ -69,6 +71,7 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 	}
 	//std::cout << std::endl;
 	std::cout << "\rRFI mitigation took " << rfi_timer << " milliseconds to process " << total_time << " seconds of data." << std::endl;
+	std::cout << "Thresholding flagged " << std::get<0>(x) << " rfi and " << std::get<1>(x) << " time samples." << std::endl;
 	rfi_pipeline.PrintTimers();
 
 
@@ -106,7 +109,7 @@ int main (int argc, char *argv[])
 
 	int rfi_mode = 2;
 	app.add_option("--rfi_mode", rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
-	assert(0 <= rfi_mode && rfi_mode <= 3);
+	assert(0 <= rfi_mode && rfi_mode <= 4);
 	params.rfi_replace_mode = (rfi_mode == 1 ? RFIPipeline::RFIReplaceMode::ZEROS : RFIPipeline::RFIReplaceMode::MEDIANS);
 
 
