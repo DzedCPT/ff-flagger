@@ -69,6 +69,7 @@ void edge_threshold(global uchar *m_out,
 	int tile_width = 1 + get_local_size(1) + max_window_size; 
 	int tid = tid_x * tile_width + tid_y;
 	int gid = gid_x * N + gid_y;
+	int window_size = max_window_size;
 
 	// Read data into shared local memory.	
 	if (gid_x < m && gid_y < n) {
@@ -94,32 +95,32 @@ void edge_threshold(global uchar *m_out,
 	// Do computation on shared local memory.
 	float window_stat;
 	float value;
-	for (int window_size = 1; window_size <= max_window_size; window_size++) {
-		// Return if current window reaches beyond end of data.
-		if (gid_x >= m || gid_y >= n - window_size) { 
-			return;
-		}
-
-		// Compute window statistic.
-		window_stat = 0;
-		for (int i = 0; i < window_size; i++) {
-			window_stat += ldata[tid + i];
-			
-		}
-		window_stat /= window_size;
-
-		// Compute edge threshold.
-		value = min(fabs(window_stat - ldata[tid - 1]), fabs(window_stat - ldata[tid + window_size]));
-
-		// Check if window should be masked.
-		if (value / lmads[tid_x] > (1.4826 * threshold)) {
-			// Mask window.
-			for (int i = 0; i < window_size; i++) {
-				m_out[gid + i] = 1;
-			}
-
-		}
+	/*for (int window_size = 1; window_size <= max_window_size; window_size++) {*/
+	// Return if current window reaches beyond end of data.
+	if (gid_x >= m || gid_y >= n - window_size) { 
+		return;
 	}
+
+	// Compute window statistic.
+	window_stat = 0;
+	for (int i = 0; i < window_size; i++) {
+		window_stat += ldata[tid + i];
+		
+	}
+	window_stat /= window_size;
+
+	// Compute edge threshold.
+	value = min(fabs(window_stat - ldata[tid - 1]), fabs(window_stat - ldata[tid + window_size]));
+
+	// Check if window should be masked.
+	if (value / lmads[tid_x] > (1.4826 * threshold)) {
+		// Mask window.
+		for (int i = 0; i < window_size; i++) {
+			m_out[gid + i] = 1;
+		}
+
+	}
+	/*}*/
 }
 	
 
@@ -128,6 +129,7 @@ void sum_threshold(global uchar *m_out,
 			       global uchar *d_in, 
 				   global uchar *m_in, 
 				   global uchar *medians, 
+				   float threshold, 
 				   int window_size, 
 				   int m, int n, int N,
 				   local float *ldata, 
@@ -182,7 +184,7 @@ void sum_threshold(global uchar *m_out,
 	}
 
 	// Check if window should be masked.
-	if (window_sum > lthresholds[tid_x] * count) {
+	if (window_sum > threshold * lthresholds[tid_x] * count) {
 		// Mask window.
 		for (int i = 0; i < window_size; i++) {
 			m_out[gid + i] = 1;

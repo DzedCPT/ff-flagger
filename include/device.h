@@ -102,7 +102,7 @@ public:
 
 	// ********** RFI mitigation pipelines ********** // 
 	
-	void Flag (const cl::Buffer& data);
+	std::tuple<int, int> Flag (const cl::Buffer& data);
 
 	// ********** Memory util functions  ********** // 
 	
@@ -154,6 +154,7 @@ public:
 			           const cl::Buffer& d_in, 
 					   cl::Buffer& m_in, 
 					   const cl::Buffer& thresholds, 
+					   float thresold,
 					   int max_window_size, 
 					   int m, int n, int N,
 					   int nx, int ny);

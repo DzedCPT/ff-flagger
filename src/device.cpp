@@ -154,57 +154,62 @@ RFIPipeline::Params RFIPipeline::ReadConfigFile (const std::string config_file_n
 
 void RFIPipeline::InitMemBuffers (const int mode) 
 {
-	if (mode == 0) return;
+	//if (mode == 0) return;
 
 	data_T = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 	mask   = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 	mask_T = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 	freq_medians = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
 
-	if (mode == 1 || mode == 3) {
+	//if (mode == 1 || mode == 3) {
 		time_means = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
 		time_temp = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
-	}
+	//}
 
-	if (mode == 2 || mode == 3) {
+	//if (mode == 2 || mode == 3) {
 		freq_mads = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
-	}
+	//}
 }
 
 
 // ********** RFI mitigation pipelines ********** // 
 
 
-void RFIPipeline::Flag (const cl::Buffer& data) 
+std::tuple<int, int> RFIPipeline::Flag (const cl::Buffer& data) 
 {
-	if (params.mode == 0) return;
+	std::vector<uint8_t> vec(params.n_channels * params.n_padded_samples);
+	std::vector<float> rows(params.n_padded_samples);
+	int sum = 0;
 	
-	if (params.mode == 2 || params.mode == 3) {
-		for (int i = 0; i < params.n_iter; i++) {
-			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+	if (params.mode == 2) {
+		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		for (int i = 1; i <= params.n_iter; i++) {
 			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
 			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		}
-		Transpose(mask_T, mask, params.n_channels, params.n_padded_samples, 16, 16);
-		MaskRowSumThreshold(mask_T, mask_T, params.n_samples, params.n_channels, params.n_channels);
-		Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
+		ReadFromBuffer(vec.data(), mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		sum = std::accumulate(vec.begin(), vec.end(), 0);
+	}
+	if (params.mode == 4 ) {
+		ClearBuffer (mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		ClearBuffer (mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		//ComputeMedians (freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		SumThreshold (mask_T, data, mask, freq_medians, params.n_iter, params.mad_threshold, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+		ReadFromBuffer(vec.data(), mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		sum = std::accumulate(vec.begin(), vec.end(), 0);
 		ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+
 	}
-	if (params.mode == 1 || params.mode == 3) {
-		for (int i = 0; i < params.n_iter; i++) {
-			Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
-			ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-			ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-			ComputeMeans(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
-			float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
-			float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
-			DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
-			MaskRows(mask_T, time_means, params.n_samples, params.n_channels, params.n_channels, 32, 32);
-			Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
-			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		}
-	}
+	Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
+	ComputeMeans(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
+	float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
+	float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+	DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
+	ReadFromBuffer(rows.data(), time_means, params.n_padded_samples * sizeof(float));
+	int row_sum =  std::accumulate(rows.begin(), rows.end(), 0.0);
+
+	return std::make_tuple(sum, row_sum);
 
 
 }
@@ -308,6 +313,7 @@ void RFIPipeline::SumThreshold (cl::Buffer& m_out,
 		                        const cl::Buffer& d_in, 
 							    cl::Buffer& m_in, 
 							    const cl::Buffer& thresholds, 
+								float threshold,
 							    int max_window_size, 
 							    int m, int n, int N,
 							    int nx, int ny) 
@@ -323,13 +329,14 @@ void RFIPipeline::SumThreshold (cl::Buffer& m_out,
 		CHECK_CL(sum_threshold.setArg(1, d_in));
 		CHECK_CL(sum_threshold.setArg(2, m_in));
 		CHECK_CL(sum_threshold.setArg(3, thresholds));
-		CHECK_CL(sum_threshold.setArg(4, window_size));
-		CHECK_CL(sum_threshold.setArg(5, m));
-		CHECK_CL(sum_threshold.setArg(6, n));
-		CHECK_CL(sum_threshold.setArg(7, N));
-		CHECK_CL(sum_threshold.setArg(8, nx * (ny + window_size) * sizeof(float), NULL));
+		CHECK_CL(sum_threshold.setArg(4, threshold));
+		CHECK_CL(sum_threshold.setArg(5, window_size));
+		CHECK_CL(sum_threshold.setArg(6, m));
+		CHECK_CL(sum_threshold.setArg(7, n));
+		CHECK_CL(sum_threshold.setArg(8, N));
 		CHECK_CL(sum_threshold.setArg(9, nx * (ny + window_size) * sizeof(float), NULL));
-		CHECK_CL(sum_threshold.setArg(10, nx * sizeof(float), NULL));
+		CHECK_CL(sum_threshold.setArg(10, nx * (ny + window_size) * sizeof(float), NULL));
+		CHECK_CL(sum_threshold.setArg(11, nx * sizeof(float), NULL));
 		
 		std::swap(m_in, m_out);
 		CHECK_CL(queue.enqueueNDRangeKernel(sum_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));

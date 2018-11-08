@@ -184,7 +184,8 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 		std::fill(mask.begin(), mask.end(), 0);
 		
 		// Sequential EdgeThresholding.
-		for (int window_size = 1; window_size <= max_window_size; window_size++) {
+		//for (int window_size = 1; window_size <= max_window_size; window_size++) {
+		int window_size = 4;
 			for (int i = 0; i < m; i++) {
 				mads[i] = Mad(vec.begin() + i * N, vec.begin() + (i * N) + n);
 				for (int j = 1; j < n - window_size; j++) {
@@ -196,7 +197,7 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 
 				}
 			}
-		}
+		//}
 
 		// Copy memory to GPU.
 		cl::Buffer gpu_mads = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
@@ -205,7 +206,8 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 		gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
 
 		// Parallel EdgeThresholding.
-		gpu.EdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 32, 32);
+		//gpu.EdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 32, 32);
+		gpu.EdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, window_size, m, n, N, 32, 32);
 
 		gpu.ReadFromBuffer(results.data(), gpu_mask, m * N * sizeof(uint8_t));
 	
@@ -225,6 +227,7 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 	std::vector<uint8_t> mask;
 	std::vector<uint8_t> mask_out;
 	std::vector<uint8_t> thresholds;
+	float threshold_val = .5;
 
 	
 	for (int test = 0; test < 10; test++) {
@@ -253,8 +256,8 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 					}
 				}
 
-				if (window_sum > threshold * window_count) {
-						std::fill(mask_out.begin() + i * N, mask_out.begin() + i * N + window_count, 1);
+				if (window_sum > threshold_val * threshold * window_count) {
+					std::fill(mask_out.begin() + i * N, mask_out.begin() + i * N + window_size, 1);
 				}
 				for ( ; j < n; j++) {
 					if (mask[i * N + j] != 1) {
@@ -267,7 +270,7 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 					}
 
 					 //Check if current window should be masked.
-					 if (window_sum > threshold * window_count) {
+					 if (window_sum > threshold_val * threshold * window_count) {
 						 std::fill(mask_out.begin() + i * N + j - window_size + 1, mask_out.begin() + i * N + j + 1, 1);
 					 }
 				
@@ -280,11 +283,18 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 		cl::Buffer gpu_mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
 		cl::Buffer gpu_mask_out = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
 		cl::Buffer gpu_thresholds = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
-		gpu.WriteToBuffer(mask.data(), gpu_mask, m * N * sizeof(uint8_t));
 		gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
-		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, max_window_size, m, n, N, 5, 5);
+		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, threshold_val, max_window_size, m, n, N, 5, 5);
 
 		gpu.ReadFromBuffer(results.data(), gpu_mask_out, m * N * sizeof(uint8_t));
+		//for (int i = 0;i < m; i++) {
+			//for (int j = 0; j < N; j++) {
+				//if (mask_out[i * N + j] != results[i * N + j]) {
+					//cout << i << " " << j << endl;	
+				//}
+			//}	
+			//break;
+		//}
 		CHECK_VEC_EQUAL(mask_out, results);
 
 	}
