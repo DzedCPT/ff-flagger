@@ -106,17 +106,16 @@ int main (int argc, char *argv[])
 
 	int rfi_mode = 2;
 	app.add_option("--rfi_mode", rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
-	assert(0 <= rfi_mode && rfi_mode <= 3);
-	params.rfi_replace_mode = (rfi_mode == 1 ? RFIPipeline::RFIReplaceMode::ZEROS : RFIPipeline::RFIReplaceMode::MEDIANS);
-
 
 	CLI11_PARSE(app, argc, argv);
 
 	FilterBank<uint8_t> in_fil_file(in_file_path);
 	FilterBank<uint8_t> out_fil_file(out_file_path, in_fil_file.header);
 	
+	assert(0 <= rfi_mode && rfi_mode <= 2);
 	params.n_channels = in_fil_file.header.nchans;
-
+	params.rfi_replace_mode = (rfi_mode == 1 ? RFIPipeline::RFIReplaceMode::ZEROS : RFIPipeline::RFIReplaceMode::MEDIANS);
+    
 	ProcessFilterBank(in_fil_file, out_fil_file, params, time);
 
 }
