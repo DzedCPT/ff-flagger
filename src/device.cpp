@@ -182,7 +182,7 @@ void RFIPipeline::Flag (const cl::Buffer& data)
     begin = std::chrono::high_resolution_clock::now(); 
 	
 	if (params.mode == 2 || params.mode == 3) {
-		for (int i = 0; i < params.n_iter; i++) {
+		for (int i = 1; i <= params.n_iter; i++) {
 			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
@@ -524,6 +524,7 @@ void RFIPipeline::ReplaceRFI (const cl::Buffer& d_out,
 		CHECK_CL(queue.enqueueNDRangeKernel(replace_rfi_medians, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
 	}
 	else if (mode == ZEROS) {
+        std::cout << mode << std::endl;
 		CHECK_CL(replace_rfi_constant.setArg(0, d_out));
 		CHECK_CL(replace_rfi_constant.setArg(1, d_in));
 		CHECK_CL(replace_rfi_constant.setArg(2, m_in));
