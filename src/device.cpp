@@ -188,10 +188,10 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
 			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		}
-		Transpose(mask_T, mask, params.n_channels, params.n_padded_samples, 16, 16);
-		MaskRowSumThreshold(mask_T, mask_T, params.n_samples, params.n_channels, params.n_channels);
-		Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
-		ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		//Transpose(mask_T, mask, params.n_channels, params.n_padded_samples, 16, 16);
+		//MaskRowSumThreshold(mask_T, mask_T, params.n_samples, params.n_channels, params.n_channels);
+		//Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
+		//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 	}
 	if (params.mode == 1 || params.mode == 3) {
 		for (int i = 0; i < params.n_iter; i++) {
