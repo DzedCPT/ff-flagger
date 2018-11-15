@@ -351,23 +351,28 @@ TEST_CASE( "Test: Compute median of each row.", "[ComputeMedians]" )
 TEST_CASE( "Test: Compute mean of each row.", "[ComputeMeans]" ) 
 {
 	cl::Buffer d_out_float;
-	std::vector<float> float_results;
-
+	std::vector<float> gpu_results; 
 	for (int test = 0; test < 10; test++) {
 		InitExperiment(10000, 10000, 0, 255);
 			
-		float_results.resize(m);
-		std::vector<float> row_sums(m, 0);
+		gpu_results.resize(n);
+		std::vector<float> col_sums(n, 0);
 		for (int i = 0; i < m; i++) {
-			row_sums[i] = std::accumulate(vec.begin() + i * N, vec.begin() + (i * N) + n, 0.0) / n;
+			for (int j = 0; j < n; j++) {
+				col_sums[j] += vec[i * N + j];
+			}	
 		}
+		for (int j = 0; j < n; j++) {
+			col_sums[j] /= m;
+		}	
+
 	
-		d_out_float = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(float));
-		gpu.ComputeMeans(d_out_float, d_in, m, n, N);
-		gpu.ReadFromBuffer(float_results.data(), d_out_float, m * sizeof(float));
+		d_out_float = gpu.InitBuffer(CL_MEM_READ_WRITE, n * sizeof(float));
+		gpu.ClearBuffer(d_out_float, n * sizeof(float));
+		gpu.ComputeMeans(d_out_float, d_in, m, n, N, 256, 256, 16, 16);
+		gpu.ReadFromBuffer(gpu_results.data(), d_out_float, n * sizeof(float));
 
-		CHECK_VEC_EQUAL(row_sums, float_results);
-
+		CHECK_VEC_EQUAL(col_sums, gpu_results);
 	}
 
 }
@@ -513,11 +518,9 @@ TEST_CASE( "Test: Replace masked values with row median.", "[ReplaceRFIMedians]"
 
 }
 
-
 TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" ) 
 {
 	for (int test = 0; test < 10; test++) {
-		InitExperiment(1000, 1000, 0, 255);
 
 		std::vector<uint8_t> mask(m * N);
 
@@ -549,6 +552,44 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 	}
 
 }
+
+
+
+//TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" ) 
+//{
+	//for (int test = 0; test < 10; test++) {
+		//InitExperiment(1000, 1000, 0, 255);
+
+		//std::vector<uint8_t> mask(m * N);
+
+		//// Generate random mask.
+		//for (auto& v: mask) { v = 0; } ;
+
+		//// Sequential Implementation.
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n; j++) {
+				//vec[i * N + j] = (mask[i * N + j] == 1) ? 0 : vec[i * N + j];
+			//}
+		//}
+
+		//// GPU.	
+		//cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * N * sizeof(uint8_t));
+		//gpu.WriteToBuffer(mask.data(), d_mask, m * N * sizeof(uint8_t));
+		//gpu.ReplaceRFI(d_out, d_in, d_mask, d_mask, RFIPipeline::RFIReplaceMode::ZEROS, m, n, N, 32, 32);
+		//gpu.ReadFromBuffer(results.data(), d_out, m * N * sizeof(uint8_t));
+		//bool passed = true;
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n; j++) {
+				//if (vec[i * N + j] != results[i * N + j]) {
+					//passed = false;
+				//}
+			//}
+		//}
+
+		//REQUIRE(passed);
+	//}
+
+//}
 
 
 	//TEST_CASE( "Test Remove Means.", "[means], [kernel]" ) {
@@ -716,6 +757,57 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 	//}
 
 //}
+
+
+
+
+TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
+
+	float threshold = 1;
+	int window_size = 3;
+	
+	n = 43657;
+	m = 1536;
+	N = n;
+	
+	cl::Buffer d_in = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n  * sizeof(uint8_t));
+	cl::Buffer d_out = gpu.InitBuffer(CL_MEM_READ_WRITE , n * sizeof(float));
+		
+	for (int test = 0; test < 5; test++) {
+		gpu.ComputeMeans(d_out, d_in, m, n, N, 256, 256, 16, 16);
+	}
+	
+	gpu.queue.finish();
+	gpu.queue.flush();
+
+	auto begin = std::chrono::high_resolution_clock::now();
+	for (int test = 0; test < 1000; test++) {
+		//gpu.ComputeMeans(d_out, d_in, m, n, N, 128, 1024, 4, 256);
+		gpu.FloatReduce(d_in, d_in, n);
+	}
+	gpu.queue.finish();
+	auto end = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1000  << std::endl;
+
+	m = 43657;
+	n = 1536;
+	N = n;
+	
+
+	begin = std::chrono::high_resolution_clock::now();
+	for (int test = 0; test < 1000; test++) {
+		gpu.ComputeMeansOld(d_out, d_in, m, n, N);
+	}
+	gpu.queue.finish();
+	end = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1000  << std::endl;
+
+
+}
+
+
+
+
 //TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
 
 	//float threshold = 1;

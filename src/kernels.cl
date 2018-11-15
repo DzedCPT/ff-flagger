@@ -43,7 +43,11 @@ kernel void reduce (global float *d_out,
 
 
 kernel
-void transpose(global uchar *d_out, const global uchar *d_in, int m, int n, local uchar *ldata) {
+void transpose (global uchar *d_out, 
+		        const global uchar *d_in, 
+				int m, int n, 
+				local uchar *ldata) 
+{
 	int gid_x = get_global_id(0);
 	int gid_y = get_global_id(1);
 	if (gid_x < m && gid_y < n) {
@@ -51,6 +55,20 @@ void transpose(global uchar *d_out, const global uchar *d_in, int m, int n, loca
 	}
 }
 
+
+kernel
+void scalar_division (global float* d_out, 
+		              global int *d_in, 
+					  int value, 
+					  int n) 
+{
+	int gid = get_global_id(0);
+
+	if (gid >= n) return; 
+
+	d_out[gid] = ((float) d_in[gid]) / value;
+
+}
 
 kernel
 void edge_threshold(global uchar *m_out, 
@@ -302,8 +320,49 @@ void compute_medians (global uchar *medians,
 
 
 kernel 
-void compute_means(global float *d_out, 
-		           global uchar *d_in, 
+void compute_col_sums(volatile global int *d_out, 
+		              global uchar *d_in, 
+				      int lx, int ly,
+				      int m, int n, int N,
+				      volatile local int *ldata) 
+{
+	int tid_x = get_local_id(0);
+	int tid_y = get_local_id(1);
+	int gid_x = get_group_id(0) * lx + tid_x;
+	int gid_y = get_group_id(1) * ly + tid_y;
+	if (gid_x >= m || gid_y >= n) return;
+
+	int end_x = min((int) get_group_id(0) * lx + lx, m);
+	int end_y = min((int) get_group_id(1) * ly + ly, n);
+
+	if (tid_x == 0) {
+		for (int lj = tid_y; lj < ly; lj+= get_local_size(1)) {
+			ldata[lj] = 0;
+		}
+	}
+	
+	barrier(CLK_LOCAL_MEM_FENCE);
+	for (int i = gid_x; i < end_x; i += get_local_size(0)) {
+		for (int j = gid_y, lj = tid_y; j < end_y; j += get_local_size(1), lj+= get_local_size(1)) {
+			atomic_add(ldata + lj, (int) d_in[i * N + j]);
+		}
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (tid_x != 0) return;
+	
+
+	for (int j = gid_y, lj = tid_y; j < end_y; j += get_local_size(1), lj+= get_local_size(1)) {
+		atomic_add(d_out + j, ldata[lj]);
+	}
+
+}
+
+
+
+kernel 
+void compute_means_old(global float *d_out, 
+				   global uchar *d_in, 
 				   int m, int n, int N,
 				   local int *ldata) 
 {
@@ -318,6 +377,11 @@ void compute_means(global float *d_out,
 	}
 
 	barrier(CLK_LOCAL_MEM_FENCE);
+	/*if (tid < 128) {*/
+		/*ldata[lid] += ldata[lid + 128];*/
+	/*}*/
+	barrier(CLK_LOCAL_MEM_FENCE);
+
 
 	if (tid < 64) {
 		ldata[lid] += ldata[lid + 64];
