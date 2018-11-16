@@ -205,6 +205,9 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		//}
 	//}
+	if (params.mode == 3) {
+	
+	}
     end = std::chrono::high_resolution_clock::now(); 
     time += std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count();
 
@@ -309,8 +312,9 @@ void RFIPipeline::EdgeThreshold (const cl::Buffer& d_out,
 void RFIPipeline::SumThreshold (cl::Buffer& m_out, 
 		                        const cl::Buffer& d_in, 
 							    cl::Buffer& m_in, 
-							    const cl::Buffer& thresholds, 
+							    const cl::Buffer& medians, 
 							    int max_window_size, 
+								float alpha,
 							    int m, int n, int N,
 							    int nx, int ny) 
 {
@@ -320,22 +324,26 @@ void RFIPipeline::SumThreshold (cl::Buffer& m_out,
 	int n_threads_x = nx * ((m + nx - 1) / nx);
 	int n_threads_y = ny * ((n + ny - 1) / ny);
 
-	for (int window_size = 1; window_size <= max_window_size; window_size++) {
+	for (int window_size = 1, iter = 0; window_size <= max_window_size; window_size*=2, iter++) {
 		CHECK_CL(sum_threshold.setArg(0, m_out));
 		CHECK_CL(sum_threshold.setArg(1, d_in));
 		CHECK_CL(sum_threshold.setArg(2, m_in));
-		CHECK_CL(sum_threshold.setArg(3, thresholds));
+		CHECK_CL(sum_threshold.setArg(3, medians));
 		CHECK_CL(sum_threshold.setArg(4, window_size));
-		CHECK_CL(sum_threshold.setArg(5, m));
-		CHECK_CL(sum_threshold.setArg(6, n));
-		CHECK_CL(sum_threshold.setArg(7, N));
-		CHECK_CL(sum_threshold.setArg(8, nx * (ny + window_size) * sizeof(float), NULL));
-		CHECK_CL(sum_threshold.setArg(9, nx * (ny + window_size) * sizeof(float), NULL));
-		CHECK_CL(sum_threshold.setArg(10, nx * sizeof(float), NULL));
+		CHECK_CL(sum_threshold.setArg(5, iter));
+		CHECK_CL(sum_threshold.setArg(6, alpha));
+		CHECK_CL(sum_threshold.setArg(7, m));
+		CHECK_CL(sum_threshold.setArg(8, n));
+		CHECK_CL(sum_threshold.setArg(9, N));
+		CHECK_CL(sum_threshold.setArg(10, nx * (ny + window_size) * sizeof(float), NULL));
+		CHECK_CL(sum_threshold.setArg(11, nx * (ny + window_size) * sizeof(float), NULL));
+		CHECK_CL(sum_threshold.setArg(12, nx * sizeof(float), NULL));
 		
 		std::swap(m_in, m_out);
 		CHECK_CL(queue.enqueueNDRangeKernel(sum_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+		
 	}
+	std::swap(m_in, m_out);
 	ADD_TIME_SINCE(SumThreshold, begin);
 
 
@@ -390,8 +398,8 @@ void RFIPipeline::ComputeMedians (const cl::Buffer& medians,
 }
 
 void RFIPipeline::ComputeMeansOld (const cl::Buffer& d_out, 
-								const cl::Buffer& d_in, 
-								int m, int n, int N) 
+								   const cl::Buffer& d_in, 
+								   int m, int n, int N) 
 {
 	//int global_size_m = 8 * std::ceil((float) m / 8);
 

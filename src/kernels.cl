@@ -147,10 +147,12 @@ void sum_threshold(global uchar *m_out,
 				   global uchar *m_in, 
 				   global uchar *medians, 
 				   int window_size, 
+				   int iter,
+				   float alpha,
 				   int m, int n, int N,
 				   local float *ldata, 
 				   local float *lmask, 
-				   local float *lthresholds) 
+				   local float *lthresholds)
 {
 
 	int gid_x = get_global_id(0);
@@ -170,7 +172,9 @@ void sum_threshold(global uchar *m_out,
 
 	// Compute and save threshold from median.
 	if (tid_y == 0) {
-		lthresholds[tid_x] = medians[gid_x];
+		/*lthresholds[tid_x] = alpha + std::pow(1.5, iter) +  medians[gid_x];*/
+		/*lthresholds[tid_x] = pow(1.5, iter) / window_size;*/
+		lthresholds[tid_x] = alpha * ((float) pow(1.5, iter) / window_size) + medians[gid_x];
 	}
 
 	// Read data into shared local memory that is needed by the right most threads 

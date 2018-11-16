@@ -31,10 +31,12 @@ public:
 	cl::Kernel transpose;
 	cl::Kernel compute_mads;
 	cl::Kernel sum_threshold;
-	cl::Kernel compute_means;
 	cl::Kernel edge_threshold;
+	cl::Kernel scalar_division;
 	cl::Kernel compute_medians;
+	cl::Kernel compute_means_old;
 	cl::Kernel detect_outliers;
+	cl::Kernel compute_col_sums;
 	cl::Kernel compute_deviation;
 	cl::Kernel replace_rfi_medians;
 	cl::Kernel replace_rfi_constant;
@@ -164,6 +166,7 @@ public:
 					   cl::Buffer& m_in, 
 					   const cl::Buffer& thresholds, 
 					   int max_window_size, 
+					   float alpha,
 					   int m, int n, int N,
 					   int nx, int ny);
 
@@ -180,8 +183,10 @@ public:
 
 	void ComputeMeans (const cl::Buffer& d_out, 
 			           const cl::Buffer& d_in, 
-					   int m, int n, int N);
-
+					   int m, int n, int N,
+					   int lx, int ly,
+					   int nx, int ny);
+	
 	float ComputeStd (const cl::Buffer& data, 
 			          const cl::Buffer& temp, 
 					  float mean, 
@@ -214,6 +219,9 @@ public:
 					 int m, int n, int N,
 					 int nx, int ny);
 	
+	void ComputeMeansOld (const cl::Buffer& d_out, 
+								const cl::Buffer& d_in, 
+								int m, int n, int N) ;
 
 };
 

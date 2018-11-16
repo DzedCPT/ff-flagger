@@ -16,7 +16,8 @@
 	REQUIRE(x.size() == y.size()); \
 	for (int i = 0; i < (int) x.size(); ++i) { \
 		if (x[i] != Approx(y[i]).margin(1e-6)) { \
-			REQUIRE(x[i] == Approx(y[i]).margin(1e-6)); \
+			cout << i << endl;\
+			CHECK(x[i] == Approx(y[i]).margin(1e-6)); \
 		} \
 	} 
 
@@ -215,16 +216,16 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 
 }
 
-
 TEST_CASE( "Test SumThreshold.", "[SumThreshold]" ) 
 {
 
-	float threshold = 120;
 	int max_window_size = 5;
 	std::vector<uint8_t> mads;
 	std::vector<uint8_t> mask;
 	std::vector<uint8_t> mask_out;
 	std::vector<uint8_t> thresholds;
+	float alpha = 6;
+	float threshold;
 
 	
 	for (int test = 0; test < 10; test++) {
@@ -238,23 +239,26 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 		std::fill(mask.begin(), mask.end(), 0);
 		std::fill(mask_out.begin(), mask_out.end(), 0);
 
+		for (auto& v : thresholds) v = 50;//RandInt(0, 255);
 	
-		for (int window_size = 1; window_size <= max_window_size; window_size++) { 
+		for (int window_size = 1, iter = 0; window_size <= max_window_size; window_size*=2, iter++) { 
 			for (int i = 0; i < m; i++) {
 
 				float window_sum   = 0;
 				int window_count = 0;
 				int j;
-				thresholds[i] = threshold;
 				for (j = 0; j < window_size; j++) {
 					if (mask[i * N + j] != 1) {
 						window_count += 1;
 						window_sum   += vec[i * N + j];
 					}
 				}
-
+				threshold =  alpha * ((float) std::pow(1.5, iter) / window_size) + thresholds[i];
+				
+				//float threshold = std::pow(1.5, iter) / window_size;
+				//cout << std::pow(1.5, iter) / window_size << endl;
 				if (window_sum > threshold * window_count) {
-						std::fill(mask_out.begin() + i * N, mask_out.begin() + i * N + window_count, 1);
+						std::fill(mask_out.begin() + i * N, mask_out.begin() + i * N + window_size, 1);
 				}
 				for ( ; j < n; j++) {
 					if (mask[i * N + j] != 1) {
@@ -276,15 +280,38 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 
 			}
 		}
-
+		
+		
 		cl::Buffer gpu_mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
 		cl::Buffer gpu_mask_out = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
 		cl::Buffer gpu_thresholds = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
-		gpu.WriteToBuffer(mask.data(), gpu_mask, m * N * sizeof(uint8_t));
+		gpu.ClearBuffer (gpu_mask, m * N * sizeof(uint8_t));
+		gpu.ClearBuffer (gpu_mask_out, m * N * sizeof(uint8_t));
 		gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
-		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, max_window_size, m, n, N, 5, 5);
+		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, max_window_size, alpha,  m, n, N, 5, 5);
 
 		gpu.ReadFromBuffer(results.data(), gpu_mask_out, m * N * sizeof(uint8_t));
+
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n ; j++) {
+				//if (mask_out[i * N + j] != results[i * N + j]) cout << i << "problem" <<j << endl;
+				////cout << (int) vec[i * N + j] << " ";
+			//}
+			////cout << endl;
+		//}
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n ; j++) {
+				//cout << (int) mask_out[i * N + j] << " ";
+			//}
+			//cout << endl;
+		//}
+		//cout << endl;
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n ; j++) {
+				//cout << (int) results[i * N + j] << " ";
+			//}
+			//cout << endl;
+		//}
 		CHECK_VEC_EQUAL(mask_out, results);
 
 	}

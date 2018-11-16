@@ -14,6 +14,7 @@ SRCS := $(addprefix $(SRC_DIR)/, $(SOURCE_FILES))
 OBJS := $(addprefix $(BUILD_DIR)/, $(OBJS))
 
 DAS := prun -np 1 -native '-C TitanX --gres=gpu:1' 
+#DAS := prun -np 1 -native '-C GTX980 --gres=gpu:1' 
 #DAS = 
 
 make: $(OBJS) $(SRCS)
@@ -22,7 +23,7 @@ make: $(OBJS) $(SRCS)
 
 test: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(TEST_DIR)/tests.cpp -o $(BUILD_DIR)/tests
-	$(DAS) $(BUILD_DIR)/tests [del]
+	$(DAS) $(BUILD_DIR)/tests [SumThreshold]
 
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) -c $<  -o $@
