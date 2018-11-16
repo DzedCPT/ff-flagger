@@ -309,9 +309,9 @@ void RFIPipeline::EdgeThreshold (const cl::Buffer& d_out,
 }
 
 
-void RFIPipeline::SumThreshold (cl::Buffer& m_out, 
+void RFIPipeline::SumThreshold (const cl::Buffer& m_out, 
 		                        const cl::Buffer& d_in, 
-							    cl::Buffer& m_in, 
+							    const cl::Buffer& m_in, 
 							    const cl::Buffer& medians, 
 							    int max_window_size, 
 								float alpha,
@@ -339,12 +339,70 @@ void RFIPipeline::SumThreshold (cl::Buffer& m_out,
 		CHECK_CL(sum_threshold.setArg(11, nx * (ny + window_size) * sizeof(float), NULL));
 		CHECK_CL(sum_threshold.setArg(12, nx * sizeof(float), NULL));
 		
-		std::swap(m_in, m_out);
 		CHECK_CL(queue.enqueueNDRangeKernel(sum_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+		//queue.finish();
+		CopyBuffer (m_out, m_in, m * N * sizeof(uint8_t));
+		//std::swap(m_in, m_out);
 		
 	}
-	std::swap(m_in, m_out);
+	//std::swap(m_in, m_out);
 	ADD_TIME_SINCE(SumThreshold, begin);
+
+
+}
+
+
+void RFIPipeline::SIRRankOperator (const cl::Buffer m_out,
+						           const cl::Buffer m_in,
+						           float density_ratio_threshold,
+						           int m, int n, int N) 
+{
+	std::vector<float> psi(n);
+	std::vector<float> psi_partial_sum(n);
+	std::vector<int> psi_partial_min_index(n);
+	std::vector<int> psi_partial_max_index(n);
+	std::vector<uint8_t> host_mask(m * N);
+	ReadFromBuffer(host_mask.data(), m_in, n * N * sizeof(uint8_t));
+
+	for (int kk = 0; kk < m; kk++) {
+		for (int j = 0; j < n; j++) {
+			psi[j] = density_ratio_threshold - host_mask[kk * N + j];
+		}
+		psi_partial_sum[0] = 0;
+		for (size_t j = 0; j < n; j++) {
+			psi_partial_sum[j + 1] = psi_partial_sum[j] + psi[j];
+		}
+
+
+		psi_partial_min_index[0] = 0;
+		for (int j = 1; j < n; j++) {
+			psi_partial_min_index[j] = psi_partial_min_index[j - 1];
+
+			if (psi_partial_sum[psi_partial_min_index[j]] > psi_partial_sum[j]) { 
+				psi_partial_min_index[j] = j; 
+			}
+
+		}
+
+		psi_partial_max_index[n - 1] = n;
+		for (int j = n - 2; j >= 0 ; j--) {
+			psi_partial_max_index[j] = psi_partial_max_index[j + 1];
+			if (psi_partial_sum[psi_partial_max_index[j]] < psi_partial_sum[j + 1]) { 
+				psi_partial_max_index[j] = j + 1; 
+			}
+		}
+
+		for (int j = 0; j < n; j++) {
+			if (psi_partial_sum[psi_partial_max_index[j]] - psi_partial_sum[psi_partial_min_index[j]] >= 0) {
+				host_mask[j] = 0;    
+			}    
+			else {
+				host_mask[j] = 1;    
+			}
+
+		}
+	}
+	WriteToBuffer(host_mask.data(), m_out, n * N * sizeof(uint8_t));
 
 
 }
@@ -572,7 +630,6 @@ void RFIPipeline::ReplaceRFI (const cl::Buffer& d_out,
 		CHECK_CL(queue.enqueueNDRangeKernel(replace_rfi_medians, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
 	}
 	else if (mode == ZEROS) {
-        std::cout << mode << std::endl;
 		CHECK_CL(replace_rfi_constant.setArg(0, d_out));
 		CHECK_CL(replace_rfi_constant.setArg(1, d_in));
 		CHECK_CL(replace_rfi_constant.setArg(2, m_in));

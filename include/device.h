@@ -161,14 +161,19 @@ public:
 					    int m, int n, int N,
 					    int nx, int ny);
 
-	void SumThreshold (cl::Buffer& m_out, 
+	void SumThreshold (const cl::Buffer& m_out, 
 			           const cl::Buffer& d_in, 
-					   cl::Buffer& m_in, 
+					   const cl::Buffer& m_in, 
 					   const cl::Buffer& thresholds, 
 					   int max_window_size, 
 					   float alpha,
 					   int m, int n, int N,
 					   int nx, int ny);
+
+	void SIRRankOperator (const cl::Buffer m_out,
+						  const cl::Buffer m_in,
+						  float density_ratio_threshold,
+						  int m, int n, int N);
 
 	void ComputeMads (const cl::Buffer& mads, 
 			          const cl::Buffer& medians, 

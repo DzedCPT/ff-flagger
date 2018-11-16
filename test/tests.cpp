@@ -16,8 +16,7 @@
 	REQUIRE(x.size() == y.size()); \
 	for (int i = 0; i < (int) x.size(); ++i) { \
 		if (x[i] != Approx(y[i]).margin(1e-6)) { \
-			cout << i << endl;\
-			CHECK(x[i] == Approx(y[i]).margin(1e-6)); \
+			REQUIRE(x[i] == Approx(y[i]).margin(1e-6)); \
 		} \
 	} 
 
@@ -132,9 +131,14 @@ TEST_CASE( "Test: Reduce array of floats.", "[FloatReduce]" )
 {
 	for (int test = 0; test < 10; test++) {
 		InitExperiment(10000);
-	
+			
+		//std::vector<float> del(m);
+		//for (auto& v: del) v = std::uniform_real_distribution<float>(0, 255)(rng);
+	//uni = std::uniform_int_distribution<int>(min_val, max_val);
+		//gpu.WriteToBuffer(del.data(), float_d_in, float_vec.size() * sizeof(float));
 		float gpu_result = gpu.FloatReduce(float_d_out, float_d_in, m);
 		float correct = std::accumulate(float_vec.begin(), float_vec.end(), 0.0);
+		//float correct = std::accumulate(del.begin(), del.end(), 0.0);
 
 		REQUIRE(correct == Approx(gpu_result));
 	}
@@ -216,11 +220,11 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 
 }
 
+
 TEST_CASE( "Test SumThreshold.", "[SumThreshold]" ) 
 {
 
 	int max_window_size = 5;
-	std::vector<uint8_t> mads;
 	std::vector<uint8_t> mask;
 	std::vector<uint8_t> mask_out;
 	std::vector<uint8_t> thresholds;
@@ -232,16 +236,15 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 		InitExperiment(1000, 1000, 0, 256);
 		
 		// Compute MADs
-		mads.resize(m);
 		mask.resize(m * N);
 		mask_out.resize(m * N);
 		thresholds.resize(m);
 		std::fill(mask.begin(), mask.end(), 0);
 		std::fill(mask_out.begin(), mask_out.end(), 0);
 
-		for (auto& v : thresholds) v = 50;//RandInt(0, 255);
+		for (auto& v : thresholds) v = RandInt(0, 255);
 	
-		for (int window_size = 1, iter = 0; window_size <= max_window_size; window_size*=2, iter++) { 
+		for (int window_size = 1, iter = 0; window_size <= max_window_size; window_size *= 2, iter++) { 
 			for (int i = 0; i < m; i++) {
 
 				float window_sum   = 0;
@@ -255,8 +258,6 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 				}
 				threshold =  alpha * ((float) std::pow(1.5, iter) / window_size) + thresholds[i];
 				
-				//float threshold = std::pow(1.5, iter) / window_size;
-				//cout << std::pow(1.5, iter) / window_size << endl;
 				if (window_sum > threshold * window_count) {
 						std::fill(mask_out.begin() + i * N, mask_out.begin() + i * N + window_size, 1);
 				}
@@ -288,13 +289,13 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 		gpu.ClearBuffer (gpu_mask, m * N * sizeof(uint8_t));
 		gpu.ClearBuffer (gpu_mask_out, m * N * sizeof(uint8_t));
 		gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
-		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, max_window_size, alpha,  m, n, N, 5, 5);
+		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, max_window_size, alpha,  m, n, N, 16, 16);
 
 		gpu.ReadFromBuffer(results.data(), gpu_mask_out, m * N * sizeof(uint8_t));
 
 		//for (int i = 0; i < m; i++) {
 			//for (int j = 0; j < n ; j++) {
-				//if (mask_out[i * N + j] != results[i * N + j]) cout << i << "problem" <<j << endl;
+				//if (mask_out[i * N + j] != results[i * N + j]) cout << i << "problem" <<j << (int) mask_out[i * N + j]<< endl;
 				////cout << (int) vec[i * N + j] << " ";
 			//}
 			////cout << endl;
@@ -409,15 +410,16 @@ TEST_CASE( "Test: Compute Standard Deviation.", "[ComputeStd]" )
 {
 	cl::Buffer temp;
 	for (int test = 0; test < 10; test++) {
-		InitExperiment(10000, 1, 0, 255);
+		if (test % 2 == 0) InitExperiment(10000, 1, 0, 255);
+		
 		float mean = Mean(float_vec.begin(), float_vec.end());
 		float std = StandardDeviation(float_vec.begin(), float_vec.end(), mean);
 
 		temp = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(float));
 		
-		float gpu_std = gpu.ComputeStd(float_d_in, temp, mean,  m, 64);
+		float gpu_std = gpu.ComputeStd(float_d_in, temp, mean,  m, 128);
 
-		REQUIRE(gpu_std == Approx(std).margin(1e-1));
+		REQUIRE(gpu_std == Approx(std).margin(1e-6));
 
 	}
 
@@ -548,11 +550,12 @@ TEST_CASE( "Test: Replace masked values with row median.", "[ReplaceRFIMedians]"
 TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" ) 
 {
 	for (int test = 0; test < 10; test++) {
+		InitExperiment(1000, 1000, 0, 255);
 
 		std::vector<uint8_t> mask(m * N);
 
 		// Generate random mask.
-		for (auto& v: mask) { v = 0; } ;
+		for (auto& v: mask) { v = (0.5 < std::uniform_real_distribution<>(0, 1)(rng)); } ;
 
 		// Sequential Implementation.
 		for (int i = 0; i < m; i++) {
@@ -563,9 +566,10 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 
 		// GPU.	
 		cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * N * sizeof(uint8_t));
+		cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
 		gpu.WriteToBuffer(mask.data(), d_mask, m * N * sizeof(uint8_t));
-		gpu.ReplaceRFI(d_out, d_in, d_mask, d_mask, RFIPipeline::RFIReplaceMode::ZEROS, m, n, N, 32, 32);
-		gpu.ReadFromBuffer(results.data(), d_out, m * N * sizeof(uint8_t));
+		gpu.ReplaceRFI(d_out, d_in, d_mask, d_medians, RFIPipeline::RFIReplaceMode::ZEROS, m, n, N, 25, 25);
+		gpu.ReadFromBuffer(results.data(), d_out, m * N *sizeof(uint8_t));
 		bool passed = true;
 		for (int i = 0; i < m; i++) {
 			for (int j = 0; j < n; j++) {
@@ -576,9 +580,47 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 		}
 
 		REQUIRE(passed);
+
 	}
 
 }
+
+
+//TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" ) 
+//{
+	//for (int test = 0; test < 10; test++) {
+
+		//std::vector<uint8_t> mask(m * N);
+
+		//// Generate random mask.
+		//for (auto& v: mask) { v = 0;} 
+
+		//// Sequential Implementation.
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n; j++) {
+				//vec[i * N + j] = (mask[i * N + j] == 1) ? 0 : vec[i * N + j];
+			//}
+		//}
+
+		//// GPU.	
+		//cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, m * N * sizeof(uint8_t));
+		//gpu.WriteToBuffer(mask.data(), d_mask, m * N * sizeof(uint8_t));
+		////gpu.WriteToBuffer(mask.data(), d_mask, m * N * sizeof(uint8_t));
+		////gpu.ReplaceRFI(d_out, d_in, d_mask, d_mask, RFIPipeline::RFIReplaceMode::ZEROS, m, n, N, 32, 32);
+		////gpu.ReadFromBuffer(results.data(), d_out, m * N * sizeof(uint8_t));
+		////bool passed = true;
+		////for (int i = 0; i < m; i++) {
+			////for (int j = 0; j < n; j++) {
+				////if (vec[i * N + j] != results[i * N + j]) {
+					////passed = false;
+				////}
+			////}
+		////}
+
+		////REQUIRE(passed);
+	//}
+
+//}
 
 
 

@@ -167,7 +167,7 @@ void sum_threshold(global uchar *m_out,
 	if (gid_x < m && gid_y < n) {
 		ldata[tid] = d_in[gid];
 		lmask[tid] = m_in[gid];
-		m_out[gid] = m_in[gid];
+		/*m_out[gid] = m_in[gid];*/
 	}
 
 	// Compute and save threshold from median.
@@ -537,7 +537,7 @@ void replace_rfi_constant(global uchar *d_out,
 	if (gid_x >= m || gid_y >= n) return;
 
 	int gid = gid_x * N + gid_y; 
-	d_out[gid] = m_in[gid] == 1 ? 0 : d_in[gid];
+	d_out[gid] = (m_in[gid] == 1 ? 0 : d_in[gid]);
 
 }
 
