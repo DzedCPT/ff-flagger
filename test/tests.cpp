@@ -224,7 +224,7 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 TEST_CASE( "Test SumThreshold.", "[SumThreshold]" ) 
 {
 
-	int max_window_size = 5;
+	int num_iters = 5;
 	std::vector<uint8_t> mask;
 	std::vector<uint8_t> mask_out;
 	std::vector<uint8_t> thresholds;
@@ -244,7 +244,7 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 
 		for (auto& v : thresholds) v = RandInt(0, 255);
 	
-		for (int window_size = 1, iter = 0; window_size <= max_window_size; window_size *= 2, iter++) { 
+		for (int window_size = 1, iter = 0; iter < num_iters; window_size *= 2, iter++) { 
 			for (int i = 0; i < m; i++) {
 
 				float window_sum   = 0;
@@ -289,7 +289,7 @@ TEST_CASE( "Test SumThreshold.", "[SumThreshold]" )
 		gpu.ClearBuffer (gpu_mask, m * N * sizeof(uint8_t));
 		gpu.ClearBuffer (gpu_mask_out, m * N * sizeof(uint8_t));
 		gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
-		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, max_window_size, alpha,  m, n, N, 16, 16);
+		gpu.SumThreshold(gpu_mask_out, d_in, gpu_mask, gpu_thresholds, num_iters, alpha,  m, n, N, 16, 16);
 
 		gpu.ReadFromBuffer(results.data(), gpu_mask_out, m * N * sizeof(uint8_t));
 
@@ -435,12 +435,23 @@ TEST_CASE( "Test: Create outlier mask using mean and std.", "[DetectOutliers]" )
 		// Sequential.
 		float mean = Mean(float_vec.begin(), float_vec.end());
 		float std = StandardDeviation(float_vec.begin(), float_vec.end(), mean);
-		std::transform(float_vec.begin(), float_vec.end(), float_vec.begin(), [mean, std](float x) -> float { return std::abs(x - mean) > std; });
+		std::vector<int> cpu_results;
+		for (int i = 0; i < m; i++) {
+			if (std::abs(float_vec[i] - mean) > std) {
+				float_vec[i] = 0;
+				cpu_results.push_back(i);
+			}	
+		}
 
 		// Parallel.
-		gpu.DetectOutliers(float_d_out, float_d_in, mean, std, 1, m, local_size);
-		gpu.ReadFromBuffer(float_results.data(), float_d_out, m * sizeof(float));
-		CHECK_VEC_EQUAL(float_vec, float_results);
+		cl::Buffer count = gpu.InitBuffer(CL_MEM_READ_WRITE, sizeof(int));
+		int num_outliers_gpu = gpu.DetectOutliers2(float_d_out, float_d_in, count, mean, std, 1, m, local_size);
+		
+		REQUIRE(num_outliers_gpu == cpu_results.size());
+		std::vector<int> gpu_results(num_outliers_gpu);
+		gpu.ReadFromBuffer(gpu_results.data(), float_d_out, cpu_results.size() * sizeof(int));
+		std::sort(gpu_results.begin(), gpu_results.end());
+		CHECK_VEC_EQUAL(gpu_results, cpu_results);
 
 	}
 }
@@ -585,7 +596,38 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 
 }
 
+TEST_CASE( "Test: sjflksf", "[Something]" ) 
+{
+	for (int test = 0; test < 10; test++) {
+		InitExperiment(1000, 1000, 0, 255);
 
+
+		std::vector<uint8_t> medians(m);
+		std::vector<int> row_mask(RandInt(0,n));
+		for (auto& m: medians) m = RandInt(0,255);
+		for (auto& v : row_mask) v = RandInt(0,n);
+
+		for (auto& v: row_mask) {
+			for (int i = 0; i < m; i++) {
+				vec[i * N + v] = medians[i];
+			}
+		}
+
+		//GPU.	
+		cl::Buffer d_mask = gpu.InitBuffer(CL_MEM_READ_WRITE, n * sizeof(int));
+		cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(uint8_t));
+		gpu.WriteToBuffer(row_mask.data(), d_mask, row_mask.size() * sizeof(int));
+		gpu.WriteToBuffer(medians.data(), d_medians, m * sizeof(uint8_t));
+		gpu.FlagTimeSamples(d_in, d_mask, d_medians, row_mask.size(), m, n, N, 16);
+
+		std::vector<uint8_t> cpu_vec(m * N);
+		gpu.ReadFromBuffer(cpu_vec.data(), d_in, m * N * sizeof(uint8_t));
+
+		CHECK_VEC_EQUAL(cpu_vec, vec);
+
+	}
+
+}
 //TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" ) 
 //{
 	//for (int test = 0; test < 10; test++) {

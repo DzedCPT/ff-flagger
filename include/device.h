@@ -35,6 +35,7 @@ public:
 	cl::Kernel scalar_division;
 	cl::Kernel compute_medians;
 	cl::Kernel compute_means_old;
+	cl::Kernel flag_time_samples;
 	cl::Kernel detect_outliers;
 	cl::Kernel compute_col_sums;
 	cl::Kernel compute_deviation;
@@ -63,6 +64,9 @@ public:
 
 	cl::Buffer time_means;
 	cl::Buffer time_temp;
+	cl::Buffer flagged_samples;
+	cl::Buffer count;
+	
 
 	enum RFIReplaceMode {MEDIANS, ZEROS};
 
@@ -117,7 +121,7 @@ public:
 
 	// ********** Memory util functions  ********** // 
 	
-	void WriteToBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
+	inline void WriteToBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
 	{
 		CHECK_CL(queue.enqueueWriteBuffer(buffer, CL_TRUE, 0, size, host_mem));
 	}
@@ -165,7 +169,7 @@ public:
 			           const cl::Buffer& d_in, 
 					   const cl::Buffer& m_in, 
 					   const cl::Buffer& thresholds, 
-					   int max_window_size, 
+					   int num_iters, 
 					   float alpha,
 					   int m, int n, int N,
 					   int nx, int ny);
@@ -198,6 +202,15 @@ public:
 					  int n, 
 					  int nx);
 
+	int DetectOutliers2 (const cl::Buffer& d_out, 
+			             const cl::Buffer& d_in, 
+			             const cl::Buffer& count, 
+						 float mean, 
+						 float std, 
+						 float threshold, 
+						 int n, 
+						 int nx);
+
 
 	void DetectOutliers (const cl::Buffer& d_out, 
 			             const cl::Buffer& d_in, 
@@ -215,6 +228,14 @@ public:
 			       const cl::Buffer& m_in, 
 				   int m, int n, int N,
 				   int nx, int ny);
+
+	void FlagTimeSamples (const cl::Buffer& d_out, 
+			              const cl::Buffer& m_in, 
+			              const cl::Buffer& medians, 
+						  int num_flagged_samples,
+				   		  int m, int n, int N,
+				   		  int nx);
+
 
 	void ReplaceRFI (const cl::Buffer& d_out, 
 			         const cl::Buffer& d_in, 

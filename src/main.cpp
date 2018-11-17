@@ -52,11 +52,12 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 
 		//MARK_TIME(mark);
 
+		rfi_pipeline.queue.finish();
 		begin = std::chrono::high_resolution_clock::now();
 		rfi_pipeline.Flag(uint_buffer);
 		rfi_pipeline.queue.finish();
 		end = std::chrono::high_resolution_clock::now();
-		rfi_timer += std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count();
+		rfi_timer += std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count();
 
 		//ADD_TIME_SINCE_MARK(timer, mark);
 		rfi_pipeline.Transpose(uint_buffer_T, uint_buffer, in_fil_file.header.nchans, params.n_samples, 12, 12);
@@ -67,8 +68,8 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 				  << std::min(in_fil_file.tellg() / total_time, (float) 1.0) * 100
 				  << " % " << std::flush;
 	}
-	//std::cout << std::endl;
-	std::cout << "\rRFI mitigation took " << rfi_timer << " milliseconds to process " << total_time << " seconds of data." << std::endl;
+	std::cout << "\rRFI mitigation took " << rfi_timer << " microseconds to process " << total_time << " seconds of data." << std::endl;
+	std::cout << rfi_pipeline.time << std::endl;
 	rfi_pipeline.PrintTimers();
 
 

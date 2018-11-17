@@ -426,10 +426,27 @@ void compute_deviation(global float *d_out,
 
 }
 
+/*kernel*/
+/*void detect_outliers(global float *d_out, */
+					 /*global float *d_in, */
+					 /*float mean, */
+					 /*float std, */
+					 /*float threshold, */
+					 /*int n) */
+/*{ */
+	/*uint gid = get_global_id(0);*/
+
+	/*if (gid >= n) return;*/
+
+	/*d_out[gid] = (fabs(d_in[gid] - mean) > std * threshold);	*/
+
+/*}*/
+
 
 kernel
-void detect_outliers(global float *d_out, 
+void detect_outliers(global int *d_out, 
 		             global float *d_in, 
+					 global int *count,
 		             float mean, 
 					 float std, 
 					 float threshold, 
@@ -438,8 +455,12 @@ void detect_outliers(global float *d_out,
 	uint gid = get_global_id(0);
 
 	if (gid >= n) return;
+	if (fabs(d_in[gid] - mean) <= std * threshold) return;
+	d_in[gid] = 0;
+	int index = atomic_inc(count);
+	d_out[index] = gid;
 
-	d_out[gid] = (fabs(d_in[gid] - mean) > std * threshold);	
+	/*d_out[gid] = (fabs(d_in[gid] - mean) > std * threshold);	*/
 
 }
 
@@ -504,6 +525,23 @@ void mask_rows(global uchar *m_out,
 			m_out[gid_m * N + i] = 1;
 		}
 	}
+}
+
+
+kernel 
+void flag_time_samples(global uchar *d_out, 
+		       		   global int *m_in, 
+		       		   global uchar *medians, 
+					   int num_flagged_samples,
+			   		   int m, int n, int N) 
+{
+	int gid = get_global_id(0);
+	if (gid >= num_flagged_samples) return;
+	int sample = m_in[gid];
+	for (int i = 0; i < m; i++) {
+		d_out[i * N + sample] = medians[i];
+	}
+
 }
 
 

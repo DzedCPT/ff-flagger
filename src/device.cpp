@@ -106,10 +106,11 @@ void RFIPipeline::LoadKernels (void)
 	scalar_division        = cl::Kernel(program, "scalar_division", &error_code);        CHECK_CL(error_code);
 	compute_medians        = cl::Kernel(program, "compute_medians", &error_code);        CHECK_CL(error_code);
 	compute_col_sums       = cl::Kernel(program, "compute_col_sums", &error_code);       CHECK_CL(error_code);
-	compute_means_old       = cl::Kernel(program, "compute_means_old", &error_code);       CHECK_CL(error_code);
+	compute_means_old      = cl::Kernel(program, "compute_means_old", &error_code);       CHECK_CL(error_code);
 	compute_deviation      = cl::Kernel(program, "compute_deviation", &error_code);      CHECK_CL(error_code);
 	replace_rfi_medians    = cl::Kernel(program, "replace_rfi_medians", &error_code);    CHECK_CL(error_code);
 	replace_rfi_constant   = cl::Kernel(program, "replace_rfi_constant", &error_code);   CHECK_CL(error_code);
+	flag_time_samples   = cl::Kernel(program, "flag_time_samples", &error_code);   CHECK_CL(error_code);
 	mask_row_sum_threshold = cl::Kernel(program, "mask_row_sum_threshold", &error_code); CHECK_CL(error_code);
 
 
@@ -166,6 +167,8 @@ void RFIPipeline::InitMemBuffers (const int mode)
 	if (mode == 1 || mode == 3) {
 		time_means = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
 		time_temp = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
+		flagged_samples = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(int));
+		count = InitBuffer(CL_MEM_READ_WRITE, sizeof(int));
 	}
 
 	if (mode == 2 || mode == 3) {
@@ -183,33 +186,32 @@ void RFIPipeline::Flag (const cl::Buffer& data)
     
     begin = std::chrono::high_resolution_clock::now(); 
 	
-	//if (params.mode == 2 || params.mode == 3) {
-		//for (int i = 1; i <= params.n_iter; i++) {
-			//ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-			//ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-			//EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
-			//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		//}
-	//}
-	//if (params.mode == 1 || params.mode == 3) {
-		//for (int i = 0; i < params.n_iter; i++) {
-			//Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
-			//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-			//ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-			//ComputeMeans(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
-			//float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
-			//float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
-			//DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
-			//MaskRows(mask_T, time_means, params.n_samples, params.n_channels, params.n_channels, 32, 32);
-			//Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
-			//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		//}
-	//}
+	if (params.mode == 2) {
+		for (int i = 1; i <= params.n_iter; i++) {
+			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		}
+	}
+	if (params.mode == 1) {
+		ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		ComputeMeans(time_means, data, params.n_channels, params.n_samples, params.n_padded_samples, 128, 1024, 4, 256);
+		int num_flagged_samples = 0;
+		for (int i = 0; i < params.n_iter; i++) {
+			float mean = FloatReduce(time_temp, time_means, params.n_samples) / (params.n_samples - num_flagged_samples);
+			float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+			num_flagged_samples = DetectOutliers2(flagged_samples, time_means, count, mean, std, params.std_threshold, params.n_samples, 128);
+		}
+		FlagTimeSamples(data, flagged_samples, freq_medians, num_flagged_samples, params.n_channels, params.n_samples, params.n_padded_samples, 128);
+
+	}
 	if (params.mode == 3) {
+		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 	
 	}
     end = std::chrono::high_resolution_clock::now(); 
-    time += std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count();
+    time += std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count();
 
 
 }
@@ -313,7 +315,7 @@ void RFIPipeline::SumThreshold (const cl::Buffer& m_out,
 		                        const cl::Buffer& d_in, 
 							    const cl::Buffer& m_in, 
 							    const cl::Buffer& medians, 
-							    int max_window_size, 
+							    int num_iters, 
 								float alpha,
 							    int m, int n, int N,
 							    int nx, int ny) 
@@ -324,7 +326,7 @@ void RFIPipeline::SumThreshold (const cl::Buffer& m_out,
 	int n_threads_x = nx * ((m + nx - 1) / nx);
 	int n_threads_y = ny * ((n + ny - 1) / ny);
 
-	for (int window_size = 1, iter = 0; window_size <= max_window_size; window_size*=2, iter++) {
+	for (int window_size = 1, iter = 0; iter < num_iters; window_size*=2, iter++) {
 		CHECK_CL(sum_threshold.setArg(0, m_out));
 		CHECK_CL(sum_threshold.setArg(1, d_in));
 		CHECK_CL(sum_threshold.setArg(2, m_in));
@@ -340,9 +342,7 @@ void RFIPipeline::SumThreshold (const cl::Buffer& m_out,
 		CHECK_CL(sum_threshold.setArg(12, nx * sizeof(float), NULL));
 		
 		CHECK_CL(queue.enqueueNDRangeKernel(sum_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
-		//queue.finish();
 		CopyBuffer (m_out, m_in, m * N * sizeof(uint8_t));
-		//std::swap(m_in, m_out);
 		
 	}
 	//std::swap(m_in, m_out);
@@ -369,7 +369,7 @@ void RFIPipeline::SIRRankOperator (const cl::Buffer m_out,
 			psi[j] = density_ratio_threshold - host_mask[kk * N + j];
 		}
 		psi_partial_sum[0] = 0;
-		for (size_t j = 0; j < n; j++) {
+		for (int j = 0; j < n; j++) {
 			psi_partial_sum[j + 1] = psi_partial_sum[j] + psi[j];
 		}
 
@@ -546,6 +546,33 @@ float RFIPipeline::ComputeStd (const cl::Buffer& d_in,
 }
 
 
+int RFIPipeline::DetectOutliers2 (const cl::Buffer& d_out, 
+		                           const cl::Buffer& d_in, 
+								   const cl::Buffer& count,
+								   float mean, 
+								   float std, 
+								   float threshold, 
+								   int n, 
+								   int nx) 
+{
+	MARK_TIME(begin);
+	
+	CHECK_CL(detect_outliers.setArg(0, d_out));
+	CHECK_CL(detect_outliers.setArg(1, d_in));
+	CHECK_CL(detect_outliers.setArg(2, count));
+	CHECK_CL(detect_outliers.setArg(3, mean));
+	CHECK_CL(detect_outliers.setArg(4, std));
+	CHECK_CL(detect_outliers.setArg(5, threshold));
+	CHECK_CL(detect_outliers.setArg(6, n));
+
+	CHECK_CL(queue.enqueueNDRangeKernel(detect_outliers, cl::NullRange, nx * ((n + nx - 1) / nx), nx));
+	ADD_TIME_SINCE(DetectOutliers2, begin);
+	int c;
+	ReadFromBuffer(&c, count, sizeof(int));
+	return c;
+
+}
+
 void RFIPipeline::DetectOutliers (const cl::Buffer& d_out, 
 		                          const cl::Buffer& d_in, 
 								  float mean, 
@@ -605,6 +632,33 @@ void RFIPipeline::MaskRows(const cl::Buffer& m_out,
 	ADD_TIME_SINCE(MaskRows, begin);
 
 }
+
+void RFIPipeline::FlagTimeSamples (const cl::Buffer& d_out, 
+			                       const cl::Buffer& m_in, 
+								   const cl::Buffer& medians,
+						           int num_flagged_samples,
+				   		           int m, int n, int N,
+								   int nx) 
+{
+	
+	MARK_TIME(begin);
+	CHECK_CL(flag_time_samples.setArg(0, d_out));
+	CHECK_CL(flag_time_samples.setArg(1, m_in));
+	CHECK_CL(flag_time_samples.setArg(2, medians));
+	CHECK_CL(flag_time_samples.setArg(3, num_flagged_samples));
+	CHECK_CL(flag_time_samples.setArg(4, m));
+	CHECK_CL(flag_time_samples.setArg(5, n));
+	CHECK_CL(flag_time_samples.setArg(6, N));
+
+	int n_threads_x = nx * ((num_flagged_samples + nx - 1) / nx);
+	CHECK_CL(queue.enqueueNDRangeKernel(flag_time_samples, cl::NullRange, n_threads_x, nx));
+
+
+	ADD_TIME_SINCE(FlagTimeSamples, begin);
+
+
+}
+
 
 
 void RFIPipeline::ReplaceRFI (const cl::Buffer& d_out, 
