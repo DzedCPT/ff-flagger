@@ -188,6 +188,9 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+			if (params.sir) {
+				SIRRankOperator(mask, mask, params.density_ratio_threshold, params.n_channels, params.n_samples, params.n_padded_samples);
+			}
 			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		}
 	}
@@ -208,9 +211,12 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 	if (params.mode == 3) {
 		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 		ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		SumThreshold(mask_T, data, mask, freq_medians, params.n_iter, 6,  params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		SumThreshold(mask_T, data, mask, freq_medians, params.n_iter, params.alpha,  params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		ReplaceRFI(data, data, mask_T, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 	
+	}
+
+
 	}
     end = std::chrono::high_resolution_clock::now(); 
     time += std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count();
