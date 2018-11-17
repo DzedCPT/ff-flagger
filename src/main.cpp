@@ -104,6 +104,15 @@ int main (int argc, char *argv[])
 	params.std_threshold = 2.5;
 	app.add_option("--std_threshold", params.std_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
 
+	params.alpha = 6;
+	app.add_option("-a,--alpha", params.alpha, "# of standard deviations from the mean required for the band to be flagged.", true);
+
+	params.sir = false;
+	app.add_flag("--sir", params.sir, "");
+
+	params.density_ratio_threshold = 0.8;
+	app.add_option("-d,--density_ratio", params.density_ratio_threshold, "", true);
+
 	int rfi_mode = 2;
 	app.add_option("--rfi_mode", rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
 
@@ -112,10 +121,19 @@ int main (int argc, char *argv[])
 	FilterBank<uint8_t> in_fil_file(in_file_path);
 	FilterBank<uint8_t> out_fil_file(out_file_path, in_fil_file.header);
 	
-	assert(0 <= rfi_mode && rfi_mode <= 2);
 	params.n_channels = in_fil_file.header.nchans;
-	params.rfi_replace_mode = (rfi_mode == 1 ? RFIPipeline::RFIReplaceMode::ZEROS : RFIPipeline::RFIReplaceMode::MEDIANS);
+	if (rfi_mode == 1) {
+		params.rfi_replace_mode = RFIPipeline::RFIReplaceMode::ZEROS;
+	}
+	else if (rfi_mode == 2) {
+		params.rfi_replace_mode = RFIPipeline::RFIReplaceMode::MEANS;
+	}
+	else if (rfi_mode == 3) {
+		params.rfi_replace_mode = RFIPipeline::RFIReplaceMode::MEDIANS;
+	}
     
+
+
 	ProcessFilterBank(in_fil_file, out_fil_file, params, time);
 
 }

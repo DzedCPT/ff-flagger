@@ -183,15 +183,15 @@ void RFIPipeline::Flag (const cl::Buffer& data)
     
     begin = std::chrono::high_resolution_clock::now(); 
 	
-	//if (params.mode == 2 || params.mode == 3) {
-		//for (int i = 1; i <= params.n_iter; i++) {
-			//ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-			//ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-			//EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
-			//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		//}
-	//}
-	//if (params.mode == 1 || params.mode == 3) {
+	if (params.mode == 2 || params.mode == 3) {
+		for (int i = 1; i <= params.n_iter; i++) {
+			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		}
+	}
+	if (params.mode == 1 || params.mode == 3) {
 		//for (int i = 0; i < params.n_iter; i++) {
 			//Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
 			//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
@@ -204,8 +204,12 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			//Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
 			//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		//}
-	//}
+	}
 	if (params.mode == 3) {
+		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		SumThreshold(mask_T, data, mask, freq_medians, params.n_iter, 6,  params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		ReplaceRFI(data, data, mask_T, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 	
 	}
     end = std::chrono::high_resolution_clock::now(); 
@@ -369,7 +373,7 @@ void RFIPipeline::SIRRankOperator (const cl::Buffer m_out,
 			psi[j] = density_ratio_threshold - host_mask[kk * N + j];
 		}
 		psi_partial_sum[0] = 0;
-		for (size_t j = 0; j < n; j++) {
+		for (int j = 0; j < n; j++) {
 			psi_partial_sum[j + 1] = psi_partial_sum[j] + psi[j];
 		}
 
@@ -619,7 +623,15 @@ void RFIPipeline::ReplaceRFI (const cl::Buffer& d_out,
 	MARK_TIME(begin);
 	int n_threads_x = nx * ((m + nx - 1) / nx);
 	int n_threads_y = ny * ((n + ny - 1) / ny);
-	if (mode == MEDIANS) {
+	if (mode == MEANS) {
+		std::vector<uint8_t> values(m * N);
+		ReadFromBuffer(values.data(), d_in, m * N * sizeof(uint8_t));
+		float mean = std::accumulate(values.begin(), values.end(), 0.0) / ( (m * N) - ((N-n) * m));
+		values.resize(m);
+		std::fill(values.begin(), values.end(), (int) mean);
+		WriteToBuffer(values.data(), new_values, m * sizeof(uint8_t));
+	}
+	if (mode == MEDIANS || mode == MEANS) {
 		CHECK_CL(replace_rfi_medians.setArg(0, d_out));
 		CHECK_CL(replace_rfi_medians.setArg(1, d_in));
 		CHECK_CL(replace_rfi_medians.setArg(2, m_in));

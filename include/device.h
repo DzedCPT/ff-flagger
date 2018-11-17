@@ -64,7 +64,7 @@ public:
 	cl::Buffer time_means;
 	cl::Buffer time_temp;
 
-	enum RFIReplaceMode {MEDIANS, ZEROS};
+	enum RFIReplaceMode {MEANS, MEDIANS, ZEROS};
 
     double time = 0.0;
 	std::chrono::time_point<std::chrono::high_resolution_clock> begin;
@@ -80,6 +80,9 @@ public:
 		float mad_threshold;
 		float std_threshold;
 		RFIReplaceMode rfi_replace_mode;
+		float alpha;
+		bool sir;
+		float density_ratio_threshold;
 	};
 
 	const Params params;
