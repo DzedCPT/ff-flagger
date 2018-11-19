@@ -870,6 +870,92 @@ TEST_CASE( "Test: sjflksf", "[Something]" )
 //}
 
 
+TEST_CASE( "Tedfst EdsffgeThreshold.", "[del2]" ) {
+
+	float threshold = 1;
+	int window_size = 3;
+	
+	m = 1536;
+	n = 43657;
+	N = n;
+		
+	cl::Buffer d_data = gpu.InitBuffer(CL_MEM_READ_WRITE, m * n);
+	cl::Buffer d_in = gpu.InitBuffer(CL_MEM_READ_WRITE, n  * sizeof(float));
+	cl::Buffer d_out = gpu.InitBuffer(CL_MEM_READ_WRITE, n  * sizeof(int));
+	cl::Buffer d_count = gpu.InitBuffer(CL_MEM_READ_WRITE, sizeof(int));
+	cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(float));
+	std::vector<float> data(n);
+	for (auto& v: data) {v = RandInt(0,255);}
+	float mean = Mean(data.begin(), data.end());
+	float std = StandardDeviation(data.begin(), data.end(), mean);
+	gpu.WriteToBuffer(data.data(), d_in, n * sizeof(float));
+	
+
+		
+	//for (int test = 0; test < 5; test++) {
+		//gpu.DetectOutliers2 (d_out, 
+						 //d_in, 
+						 //d_count, 
+						 //mean, 
+						 //std, 
+						 //threshold, 
+						 //n, 12);
+		//gpu.FlagTimeSamples (d_data, 
+						  //d_out, 
+						  //d_medians, 
+						  //100,
+							 //m, n, N,
+							 //512);
+
+
+
+	//}
+	
+	gpu.queue.finish();
+	gpu.queue.flush();
+
+	auto begin = std::chrono::high_resolution_clock::now();
+	for (int test = 0; test < 1; test++) {
+		gpu.DetectOutliers2 (d_out, 
+			             d_in, 
+			             d_count, 
+						 mean, 
+						 std, 
+						 threshold, 
+						 n, 64);
+		int count;
+		gpu.ReadFromBuffer(&count, d_count, sizeof(int));
+		gpu.FlagTimeSamples (d_data, 
+			              d_out, 
+			              d_medians, 
+						  count,
+				   		  m, n, N,
+				   		  512);
+
+
+
+	}
+	gpu.queue.finish();
+	auto end = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1 << std::endl;
+
+	//m = 43657;
+	//n = 1536;
+	//N = n;
+	
+
+	//begin = std::chrono::high_resolution_clock::now();
+	//for (int test = 0; test < 1000; test++) {
+		//gpu.ComputeMeansOld(d_out, d_in, m, n, N);
+	//}
+	//gpu.queue.finish();
+	//end = std::chrono::high_resolution_clock::now();
+	//std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1000  << std::endl;
+
+
+}
+
+
 
 
 TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
