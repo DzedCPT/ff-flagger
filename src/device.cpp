@@ -217,7 +217,6 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 	}
 
 
-	}
     end = std::chrono::high_resolution_clock::now(); 
     time += std::chrono::duration_cast<std::chrono::nanoseconds>(end-begin).count();
 

@@ -829,6 +829,60 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 
 
 
+TEST_CASE( "Tsfsfdedfst EdgeThreshold.", "[del2]" ) {
+
+	float threshold = 1;
+	int window_size = 3;
+	
+	m = 1536;
+	n = 43657;
+	N = n;
+	
+	cl::Buffer d_data = gpu.InitBuffer(CL_MEM_READ_WRITE, m * n);
+	cl::Buffer d_in = gpu.InitBuffer(CL_MEM_READ_WRITE, n  * sizeof(float));
+	cl::Buffer d_medians = gpu.InitBuffer(CL_MEM_READ_WRITE, m * sizeof(float));
+	std::vector<float> data(n);
+	for (auto& v: data) {v = RandInt(0,255);}
+	float mean = Mean(data.begin(), data.end());
+	float std = StandardDeviation(data.begin(), data.end(), mean);
+	gpu.WriteToBuffer(data.data(), d_in, n * sizeof(float));
+	
+		
+	for (int test = 0; test < 5; test++) {
+		gpu.DetectOutliers (d_in, d_in, mean, std, threshold, n, 512);
+
+	}
+	
+	gpu.queue.finish();
+	gpu.queue.flush();
+
+	auto begin = std::chrono::high_resolution_clock::now();
+	for (int test = 0; test < 1; test++) {
+		gpu.DetectOutliers (d_in, d_in, mean, std, threshold, n, 512);
+		gpu.ReplaceRFI (d_data, d_data, d_in, d_medians, RFIPipeline::RFIReplaceMode::MEDIANS,m, n, N,16, 16);
+	
+	}
+	gpu.queue.finish();
+	auto end = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 100  << std::endl;
+
+	//m = 43657;
+	//n = 1536;
+	//N = n;
+	
+
+	//begin = std::chrono::high_resolution_clock::now();
+	//for (int test = 0; test < 1000; test++) {
+		//gpu.ComputeMeansOld(d_out, d_in, m, n, N);
+	//}
+	//gpu.queue.finish();
+	//end = std::chrono::high_resolution_clock::now();
+	//std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1000  << std::endl;
+
+
+}
+
+
 
 TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
 
