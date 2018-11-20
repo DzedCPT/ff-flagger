@@ -849,7 +849,7 @@ TEST_CASE( "Tsfsfdedfst EdgeThreshold.", "[del2]" ) {
 	
 		
 	for (int test = 0; test < 5; test++) {
-		gpu.DetectOutliers (d_in, d_in, mean, std, threshold, n, 512);
+		//gpu.DetectOutliers (d_in, d_in, mean, std, threshold, n, 512);
 
 	}
 	
@@ -864,7 +864,7 @@ TEST_CASE( "Tsfsfdedfst EdgeThreshold.", "[del2]" ) {
 	}
 	gpu.queue.finish();
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 100  << std::endl;
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1  << std::endl;
 
 	//m = 43657;
 	//n = 1536;
