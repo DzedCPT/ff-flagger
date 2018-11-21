@@ -111,7 +111,7 @@ public:
 
 	void PrintTimers (void) {
 		for (auto iter = time_map.begin(); iter != time_map.end(); iter++) { \
-			std::cout << iter->first << " => " << iter->second.value / 1000 << '\n'; \
+			std::cout << iter->first << " => " << iter->second.value << '\n'; \
 		}
 	}
 

@@ -298,14 +298,17 @@ void RFIPipeline::EdgeThreshold (const cl::Buffer& d_out,
 	CHECK_CL(edge_threshold.setArg(5, m));
 	CHECK_CL(edge_threshold.setArg(6, n));
 	CHECK_CL(edge_threshold.setArg(7, N));
-	CHECK_CL(edge_threshold.setArg(8, nx * (ny + max_window_size + 1) * sizeof(float), NULL));
-	CHECK_CL(edge_threshold.setArg(9, nx * sizeof(float), NULL));
+	//CHECK_CL(edge_threshold.setArg(8, nx * (ny + max_window_size + 1) * sizeof(float), NULL));
+	//CHECK_CL(edge_threshold.setArg(9, nx * sizeof(float), NULL));
 
 	// Compute thread layout.
 	int n_threads_x = nx * ((m + nx - 1) / nx);
 	int n_threads_y = ny * ((n + ny - 1) / ny);
-
-	CHECK_CL(queue.enqueueNDRangeKernel(edge_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+	cl::Event evt;
+	CHECK_CL(queue.enqueueNDRangeKernel(edge_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny), NULL, &evt));
+	evt.wait();
+	std::cout << evt.getProfilingInfo<CL_PROFILING_COMMAND_END>() -
+		            evt.getProfilingInfo<CL_PROFILING_COMMAND_START>() << std::endl;
 	ADD_TIME_SINCE(EdgeThreshold, begin);
 
 }

@@ -69,75 +69,99 @@ void scalar_division (global float* d_out,
 	d_out[gid] = ((float) d_in[gid]) / value;
 
 }
+/*kernel*/
+/*void edge_threshold(global uchar *m_out, */
+					/*global uchar* d_in, */
+					/*global uchar *mads, */
+					/*float threshold, */
+					/*int max_window_size, */
+					/*int m, int n, int N, */
+					/*local float *ldata, */
+					/*local float *lmads) */
+/*{*/
+	/*int gid_x = get_global_id(0);*/
+	/*int gid_y = get_global_id(1) + 1; // 1 offset because first column is skipped.*/
+	/*int tid_x = get_local_id(0);*/
+	/*int tid_y = get_local_id(1) + 1; // 1 offset because first column is skipped.*/
+	/*int tile_width = 1 + get_local_size(1) + max_window_size; */
+	/*int tid = tid_x * tile_width + tid_y;*/
+	/*int gid = gid_x * N + gid_y;*/
 
+	/*// Read data into shared local memory.	*/
+	/*if (gid_x < m && gid_y < n) {*/
+		/*ldata[tid] = d_in[gid];*/
+	/*}*/
+
+	/*// Read Mad and left most edge into shared local memory.*/
+	/*if (tid_y == 1) {*/
+		/*lmads[tid_x] = mads[gid_x];*/
+		/*ldata[tid - 1] = d_in[gid - 1];*/
+	/*}*/
+
+	/*// Read data into shared local memory that is needed by the right most threads */
+	/*// in the work group but are not directly computed as part of the work group.*/
+	/*int d = get_local_size(0) - tid_y - 1;  */
+	/*if (d <= max_window_size && gid_y + max_window_size < n) {*/
+		/*ldata[tid + max_window_size] = d_in[gid + max_window_size];*/
+	/*}*/
+
+	/*// Wait for all threads to have initialised shared local memory.*/
+	/*barrier(CLK_LOCAL_MEM_FENCE);*/
+
+	/*// Do computation on shared local memory.*/
+	/*float window_stat;*/
+	/*float value;*/
+	/*for (int window_size = 1; window_size <= max_window_size; window_size++) {*/
+		/*// Return if current window reaches beyond end of data.*/
+		/*if (gid_x >= m || gid_y >= n - window_size) { */
+			/*return;*/
+		/*}*/
+
+		/*// Compute window statistic.*/
+		/*window_stat = 0;*/
+		/*for (int i = 0; i < window_size; i++) {*/
+			/*window_stat += ldata[tid + i];*/
+			
+		/*}*/
+		/*window_stat /= window_size;*/
+
+		/*// Compute edge threshold.*/
+		/*value = min(fabs(window_stat - ldata[tid - 1]), fabs(window_stat - ldata[tid + window_size]));*/
+
+		/*// Check if window should be masked.*/
+		/*if (value / lmads[tid_x] > (1.4826 * threshold)) {*/
+			/*// Mask window.*/
+			/*for (int i = 0; i < window_size; i++) {*/
+				/*m_out[gid + i] = 1;*/
+			/*}*/
+
+		/*}*/
+	/*}*/
+/*}*/
 kernel
 void edge_threshold(global uchar *m_out, 
-				    global uchar* d_in, 
+					global uchar *d_in, 
 					global uchar *mads, 
 					float threshold, 
 					int max_window_size, 
-					int m, int n, int N, 
-					local float *ldata, 
-					local float *lmads) 
+					int m, int n, int N)
+					/*local float *ldata, */
+					/*local float *lmads) */
 {
-	int gid_x = get_global_id(0);
-	int gid_y = get_global_id(1) + 1; // 1 offset because first column is skipped.
-	int tid_x = get_local_id(0);
-	int tid_y = get_local_id(1) + 1; // 1 offset because first column is skipped.
-	int tile_width = 1 + get_local_size(1) + max_window_size; 
-	int tid = tid_x * tile_width + tid_y;
-	int gid = gid_x * N + gid_y;
+	m_out[0] = 10;
+	/*int gid_x = get_global_id(0);*/
+	/*int gid_y = get_global_id(1) + 1; // 1 offset because first column is skipped.*/
+	/*if (gid_x >= m || gid_y >= n - 1) return;*/
+	/*int gid = gid_x * N + gid_y;*/
+	
+	/*int max_edge = max(d_in[gid-1], d_in[gid+1]);*/
+	/*if (d_in[gid] - max_edge >  mads[gid_x] ) {*/
+	/*if (gid_x == 1) {*/
+	/*d_in[gid] = 120;*/
+	/*}*/
+	
+	/*}*/
 
-	// Read data into shared local memory.	
-	if (gid_x < m && gid_y < n) {
-		ldata[tid] = d_in[gid];
-	}
-
-	// Read Mad and left most edge into shared local memory.
-	if (tid_y == 1) {
-		lmads[tid_x] = mads[gid_x];
-		ldata[tid - 1] = d_in[gid - 1];
-	}
-
-	// Read data into shared local memory that is needed by the right most threads 
-	// in the work group but are not directly computed as part of the work group.
-	int d = get_local_size(0) - tid_y - 1;  
-	if (d <= max_window_size && gid_y + max_window_size < n) {
-		ldata[tid + max_window_size] = d_in[gid + max_window_size];
-	}
-
-	// Wait for all threads to have initialised shared local memory.
-	barrier(CLK_LOCAL_MEM_FENCE);
-
-	// Do computation on shared local memory.
-	float window_stat;
-	float value;
-	for (int window_size = 1; window_size <= max_window_size; window_size++) {
-		// Return if current window reaches beyond end of data.
-		if (gid_x >= m || gid_y >= n - window_size) { 
-			return;
-		}
-
-		// Compute window statistic.
-		window_stat = 0;
-		for (int i = 0; i < window_size; i++) {
-			window_stat += ldata[tid + i];
-			
-		}
-		window_stat /= window_size;
-
-		// Compute edge threshold.
-		value = min(fabs(window_stat - ldata[tid - 1]), fabs(window_stat - ldata[tid + window_size]));
-
-		// Check if window should be masked.
-		if (value / lmads[tid_x] > (1.4826 * threshold)) {
-			// Mask window.
-			for (int i = 0; i < window_size; i++) {
-				m_out[gid + i] = 1;
-			}
-
-		}
-	}
 }
 	
 

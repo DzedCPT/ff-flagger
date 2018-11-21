@@ -892,30 +892,30 @@ TEST_CASE( "Tedfst EdsffgeThreshold.", "[del2]" ) {
 	
 
 		
-	//for (int test = 0; test < 5; test++) {
-		//gpu.DetectOutliers2 (d_out, 
-						 //d_in, 
-						 //d_count, 
-						 //mean, 
-						 //std, 
-						 //threshold, 
-						 //n, 12);
-		//gpu.FlagTimeSamples (d_data, 
-						  //d_out, 
-						  //d_medians, 
-						  //100,
-							 //m, n, N,
-							 //512);
+	for (int test = 0; test < 5; test++) {
+		gpu.DetectOutliers2 (d_out, 
+						 d_in, 
+						 d_count, 
+						 mean, 
+						 std, 
+						 threshold, 
+						 n, 12);
+		gpu.FlagTimeSamples (d_data, 
+						  d_out, 
+						  d_medians, 
+						  100,
+							 m, n, N,
+							 512);
 
 
 
-	//}
+	}
 	
 	gpu.queue.finish();
 	gpu.queue.flush();
 
 	auto begin = std::chrono::high_resolution_clock::now();
-	for (int test = 0; test < 1; test++) {
+	for (int test = 0; test < 100; test++) {
 		gpu.DetectOutliers2 (d_out, 
 			             d_in, 
 			             d_count, 
@@ -937,7 +937,7 @@ TEST_CASE( "Tedfst EdsffgeThreshold.", "[del2]" ) {
 	}
 	gpu.queue.finish();
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1 << std::endl;
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 100 << std::endl;
 
 	//m = 43657;
 	//n = 1536;
@@ -993,7 +993,7 @@ TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
 
 	begin = std::chrono::high_resolution_clock::now();
 	for (int test = 0; test < 1000; test++) {
-		gpu.ComputeMeansOld(d_out, d_in, m, n, N);
+		//gpu.ComputeMeansOld(d_out, d_in, m, n, N);
 	}
 	gpu.queue.finish();
 	end = std::chrono::high_resolution_clock::now();
@@ -1005,62 +1005,77 @@ TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
 
 
 
-//TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
+TEST_CASE( "Tedfst EdgeThresholsfdsd.", "[del3]" ) {
 
-	//float threshold = 1;
-	//int window_size = 3;
+	float threshold = 1;
+	int window_size = 3;
 	
-	//m = 43657;
-	//n = 1536;
-	//uni = std::uniform_int_distribution<int>(0, 255);
-	//std::vector<uint8_t> rand(m * n);
-	//std::vector<uint8_t> mask(m * n);
-	//std::vector<uint8_t> mads(m);
-	//std::vector<uint8_t> thresholds(m * n);
-	//for (auto& v: mads) { 
-		//v = round(uni(rng)); 
-	//}
-	//for (auto& v: thresholds) { 
-		//v = round(uni(rng)); 
-	//}
+	m = 43657;
+	n = 1536;
+	uni = std::uniform_int_distribution<int>(0, 255);
+	std::vector<uint8_t> rand(m * n);
+	std::vector<uint8_t> mask(m * n);
+	std::vector<uint8_t> mads(m);
+	std::vector<uint8_t> thresholds(m * n);
+	for (auto& v: mads) { 
+		v = round(uni(rng)); 
+	}
+	for (auto& v: thresholds) { 
+		v = round(uni(rng)); 
+	}
 
-	//for (auto& v: rand) { 
-		//v = round(uni(rng)); 
-	//}
-	//uni = std::uniform_int_distribution<int>(0, 1);
-	//for (auto& v: mask) { 
-		//v = round(uni(rng)); 
-	//}
+	for (auto& v: rand) { 
+		v = round(uni(rng)); 
+	}
+	uni = std::uniform_int_distribution<int>(0, 1);
+	for (auto& v: mask) { 
+		v = round(uni(rng)); 
+	}
 
 	
 
-	//cl::Buffer data = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n  * sizeof(uint8_t));
-	//gpu.WriteToBuffer(rand.data(), data, m * n * sizeof(uint8_t));
-	//cl::Buffer gpu_mads = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
-	//gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
-	//cl::Buffer gpu_mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(uint8_t));
-	//gpu.WriteToBuffer(mask.data(), gpu_mask, m * n * sizeof(uint8_t));
-	//cl::Buffer gpu_mask_out = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(uint8_t));
-	//cl::Buffer gpu_thresholds = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(float));
-	//gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
+	cl::Buffer data = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n  * sizeof(uint8_t));
+	gpu.WriteToBuffer(rand.data(), data, m * n * sizeof(uint8_t));
+	cl::Buffer gpu_mads = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
+	gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
+	cl::Buffer gpu_mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(uint8_t));
+	gpu.WriteToBuffer(mask.data(), gpu_mask, m * n * sizeof(uint8_t));
+	cl::Buffer gpu_mask_out = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(uint8_t));
+	cl::Buffer gpu_thresholds = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(float));
+	gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
 		
-	//for (int test = 0; test < 5; test++) {
-		////gpu.EdgeThreshold(gpu_mask_out, data, gpu_mask, gpu_mads, threshold, 1, m, n, 16, 16);
-	//}
-	
-	//gpu.queue.finish();
-	//gpu.queue.flush();
+	gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n, n, 16, 16);
+	gpu.queue.finish();
+	auto begin = std::chrono::high_resolution_clock::now();
+	for (int test = 0; test < 1; test++) {
+		gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n, n, 16, 16);
+	}
 
-	////for (int i = 0; i < 8; i++) {
-		////auto begin = std::chrono::high_resolution_clock::now();
-		////for (int test = 0; test < 1000; test++) {
-			////gpu.EdgeThreshold(gpu_mask_out, data, gpu_mask, gpu_mads, threshold, std::pow(2,i), m, n, 1, 256);
-		////}
-		////gpu.queue.finish();
-		////auto end = std::chrono::high_resolution_clock::now();
-		////std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1000 << std::endl;
-	////}
-	////gpu.queue.flush();
+	gpu.queue.finish();
+	gpu.queue.flush();
+	auto end = std::chrono::high_resolution_clock::now();
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() << std::endl;
+	gpu.PrintTimers();
+
+	//for (int i = 1; i <= 1; i++) {
+		//auto begin = std::chrono::high_resolution_clock::now();
+		//for (int test = 0; test < 100; test++) {
+			//gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, i, m, n, n, 16, 16);
+			//CHECK_CL(gpu.edge_threshold.setArg(0, d_out));
+			//CHECK_CL(gpu.edge_threshold.setArg(1, d_in));
+			//CHECK_CL(gpu.edge_threshold.setArg(2, mads));
+			//CHECK_CL(gpu.edge_threshold.setArg(3, threshold));
+			//CHECK_CL(gpu.edge_threshold.setArg(4, max_window_size));
+			//CHECK_CL(gpu.edge_threshold.setArg(5, m));
+			//CHECK_CL(gpu.edge_threshold.setArg(6, n));
+			//CHECK_CL(gpu.edge_threshold.setArg(7, N));
+		//}
+		//gpu.queue.finish();
+		//auto end = std::chrono::high_resolution_clock::now();
+		//std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 100 << std::endl;
+	//}
+	////gpu.PrintTimers();
+	//gpu.queue.flush();
 	
 	//for (int w = 1; w < 10; w++) {
 		//auto begin = std::chrono::high_resolution_clock::now();
@@ -1077,7 +1092,7 @@ TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
 	//}
 
 
-//}
+}
 
 
 
