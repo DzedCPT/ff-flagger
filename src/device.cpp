@@ -74,7 +74,7 @@ RFIPipeline::RFIPipeline (const Params& _params): params(_params)
 	}
 
 	// Create command queue.
-	queue = cl::CommandQueue(context, devices[0], 0, &error_code); CHECK_CL(error_code);
+	queue = cl::CommandQueue(context, devices[0], CL_QUEUE_PROFILING_ENABLE, &error_code); CHECK_CL(error_code);
 
 	LoadKernels();
 	InitMemBuffers(params.mode);
@@ -288,7 +288,7 @@ void RFIPipeline::EdgeThreshold (const cl::Buffer& d_out,
 								 int m, int n, int N, 
 								 int nx, int ny) 
 {
-	MARK_TIME(begin);
+	//MARK_TIME(begin);
 	
 	CHECK_CL(edge_threshold.setArg(0, d_out));
 	CHECK_CL(edge_threshold.setArg(1, d_in));
@@ -298,18 +298,18 @@ void RFIPipeline::EdgeThreshold (const cl::Buffer& d_out,
 	CHECK_CL(edge_threshold.setArg(5, m));
 	CHECK_CL(edge_threshold.setArg(6, n));
 	CHECK_CL(edge_threshold.setArg(7, N));
-	//CHECK_CL(edge_threshold.setArg(8, nx * (ny + max_window_size + 1) * sizeof(float), NULL));
+	CHECK_CL(edge_threshold.setArg(8, nx * (ny + max_window_size + 1) * sizeof(float), NULL));
 	//CHECK_CL(edge_threshold.setArg(9, nx * sizeof(float), NULL));
-
-	// Compute thread layout.
+	//CHECK_CL(edge_threshold.setArg(8, (ny + max_window_size + 1) * sizeof(float), NULL));
 	int n_threads_x = nx * ((m + nx - 1) / nx);
-	int n_threads_y = ny * ((n + ny - 1) / ny);
+	int n_threads_y = ny;
+
 	cl::Event evt;
 	CHECK_CL(queue.enqueueNDRangeKernel(edge_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny), NULL, &evt));
-	evt.wait();
-	std::cout << evt.getProfilingInfo<CL_PROFILING_COMMAND_END>() -
-		            evt.getProfilingInfo<CL_PROFILING_COMMAND_START>() << std::endl;
-	ADD_TIME_SINCE(EdgeThreshold, begin);
+	//evt.wait();
+	//double time =  evt.getProfilingInfo<CL_PROFILING_COMMAND_END>() - evt.getProfilingInfo<CL_PROFILING_COMMAND_START>();
+	//std::cout << time / 1000 << std::endl;
+	//ADD_TIME_SINCE(EdgeThreshold, begin);
 
 }
 
@@ -329,6 +329,8 @@ void RFIPipeline::SumThreshold (const cl::Buffer& m_out,
 	int n_threads_x = nx * ((m + nx - 1) / nx);
 	int n_threads_y = ny * ((n + ny - 1) / ny);
 
+	cl::Event evt;
+	double time = 0.0;
 	for (int window_size = 1, iter = 0; iter < num_iters; window_size*=2, iter++) {
 		CHECK_CL(sum_threshold.setArg(0, m_out));
 		CHECK_CL(sum_threshold.setArg(1, d_in));
@@ -344,10 +346,14 @@ void RFIPipeline::SumThreshold (const cl::Buffer& m_out,
 		CHECK_CL(sum_threshold.setArg(11, nx * (ny + window_size) * sizeof(float), NULL));
 		CHECK_CL(sum_threshold.setArg(12, nx * sizeof(float), NULL));
 		
-		CHECK_CL(queue.enqueueNDRangeKernel(sum_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+		CHECK_CL(queue.enqueueNDRangeKernel(sum_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny), NULL, &evt));
 		CopyBuffer (m_out, m_in, m * N * sizeof(uint8_t));
+		evt.wait();
+		time += evt.getProfilingInfo<CL_PROFILING_COMMAND_END>() -
+		            evt.getProfilingInfo<CL_PROFILING_COMMAND_START>();
 		
 	}
+	//std::cout << time / 1000 << std::endl;
 	//std::swap(m_in, m_out);
 	ADD_TIME_SINCE(SumThreshold, begin);
 

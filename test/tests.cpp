@@ -187,6 +187,7 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 		mads.resize(m);
 		mask.resize(m * N);
 		std::fill(mask.begin(), mask.end(), 0);
+		std::fill(results.begin(), results.end(), 0);
 		
 		// Sequential EdgeThresholding.
 		for (int window_size = 1; window_size <= max_window_size; window_size++) {
@@ -210,10 +211,28 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 		gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
 
 		// Parallel EdgeThresholding.
-		gpu.EdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 32, 32);
+		gpu.EdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 1, 8);
 
 		gpu.ReadFromBuffer(results.data(), gpu_mask, m * N * sizeof(uint8_t));
-	
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n; j++) {
+				//if (mask[i * N + j] == results[i * N + j]) {
+					//cout << 0 << ",";	
+				//}
+				//else {
+					//cout << 1 << ",";
+				//}
+				////cout << (int) vec[i * N + j] << ",";
+			//}
+			//cout << endl;
+		//}
+		//cout << endl;
+		//for (int i = 0; i < m; i++) {
+			//for (int j = 0; j < n; j++) {
+				//cout << (int) results[i * N + j] << ",";
+			//}
+			//cout << endl;
+		//}
 		CHECK_VEC_EQUAL(mask, results);
 
 	}
@@ -1008,10 +1027,10 @@ TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
 TEST_CASE( "Tedfst EdgeThresholsfdsd.", "[del3]" ) {
 
 	float threshold = 1;
-	int window_size = 3;
+	int window_size = 1;
 	
-	m = 43657;
-	n = 1536;
+	n = 43657;
+	m = 1536;
 	uni = std::uniform_int_distribution<int>(0, 255);
 	std::vector<uint8_t> rand(m * n);
 	std::vector<uint8_t> mask(m * n);
@@ -1044,18 +1063,20 @@ TEST_CASE( "Tedfst EdgeThresholsfdsd.", "[del3]" ) {
 	cl::Buffer gpu_thresholds = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(float));
 	gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
 		
-	gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n, n, 16, 16);
+	gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, 10,6, m, n,n, 1, 256);
+	//gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n, n, 16, 16);
 	gpu.queue.finish();
 	auto begin = std::chrono::high_resolution_clock::now();
-	for (int test = 0; test < 1; test++) {
-		gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n, n, 16, 16);
+	for (int test = 0; test < 100; test++) {
+		gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, window_size, m, n, n, 1, 64);
+		//gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, 10,6, m, n,n, 1, 256);
 	}
 
 	gpu.queue.finish();
 	gpu.queue.flush();
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() << std::endl;
-	gpu.PrintTimers();
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 100 << std::endl;
+	//gpu.PrintTimers();
 
 	//for (int i = 1; i <= 1; i++) {
 		//auto begin = std::chrono::high_resolution_clock::now();
