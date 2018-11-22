@@ -1063,19 +1063,22 @@ TEST_CASE( "Tedfst EdgeThresholsfdsd.", "[del3]" ) {
 	cl::Buffer gpu_thresholds = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(float));
 	gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
 		
-	gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, 10,6, m, n,n, 1, 256);
+	gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, 10, 6, m, n,n, 1, 256);
 	//gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n, n, 16, 16);
 	gpu.queue.finish();
+	//for (int w = 1; w <= 10; w++) {
+	int w = 5;
 	auto begin = std::chrono::high_resolution_clock::now();
-	for (int test = 0; test < 100; test++) {
-		gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, window_size, m, n, n, 1, 64);
+	for (int test = 0; test < 1; test++) {
+		gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, w, m, n, n, 1, 512);
 		//gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, 10,6, m, n,n, 1, 256);
 	}
 
 	gpu.queue.finish();
 	gpu.queue.flush();
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 100 << std::endl;
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count()<< std::endl;
+	//}
 	//gpu.PrintTimers();
 
 	//for (int i = 1; i <= 1; i++) {
