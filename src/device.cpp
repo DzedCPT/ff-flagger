@@ -101,12 +101,13 @@ void RFIPipeline::LoadKernels (void)
 	transpose              = cl::Kernel(program, "transpose", &error_code);              CHECK_CL(error_code);
 	compute_mads           = cl::Kernel(program, "compute_mads", &error_code);           CHECK_CL(error_code);
 	sum_threshold          = cl::Kernel(program, "sum_threshold", &error_code);          CHECK_CL(error_code);
-	edge_threshold         = cl::Kernel(program, "edge_threshold", &error_code);         CHECK_CL(error_code);
+	mean_edge_threshold    = cl::Kernel(program, "mean_edge_threshold", &error_code);         CHECK_CL(error_code);
+	point_edge_threshold   = cl::Kernel(program, "point_edge_threshold", &error_code);         CHECK_CL(error_code);
 	detect_outliers        = cl::Kernel(program, "detect_outliers", &error_code);        CHECK_CL(error_code);
 	scalar_division        = cl::Kernel(program, "scalar_division", &error_code);        CHECK_CL(error_code);
 	compute_medians        = cl::Kernel(program, "compute_medians", &error_code);        CHECK_CL(error_code);
 	compute_col_sums       = cl::Kernel(program, "compute_col_sums", &error_code);       CHECK_CL(error_code);
-	compute_means_old       = cl::Kernel(program, "compute_means_old", &error_code);       CHECK_CL(error_code);
+	compute_means_old      = cl::Kernel(program, "compute_means_old", &error_code);       CHECK_CL(error_code);
 	compute_deviation      = cl::Kernel(program, "compute_deviation", &error_code);      CHECK_CL(error_code);
 	replace_rfi_medians    = cl::Kernel(program, "replace_rfi_medians", &error_code);    CHECK_CL(error_code);
 	replace_rfi_constant   = cl::Kernel(program, "replace_rfi_constant", &error_code);   CHECK_CL(error_code);
@@ -187,14 +188,14 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 		for (int i = 1; i <= params.n_iter; i++) {
 			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
-			if (params.sir) {
-				SIRRankOperator(mask, mask, params.density_ratio_threshold, params.n_channels, params.n_samples, params.n_padded_samples);
-			}
+			PointEdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+			//if (params.sir) {
+				//SIRRankOperator(mask, mask, params.density_ratio_threshold, params.n_channels, params.n_samples, params.n_padded_samples);
+			//}
 			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		}
 	}
-	if (params.mode == 1 || params.mode == 3) {
+	//if (params.mode == 1 || params.mode == 3) {
 		//for (int i = 0; i < params.n_iter; i++) {
 			//Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
 			//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
@@ -207,14 +208,14 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			//Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
 			//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		//}
-	}
-	if (params.mode == 3) {
-		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-		ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		SumThreshold(mask_T, data, mask, freq_medians, params.n_iter, params.alpha,  params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		ReplaceRFI(data, data, mask_T, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+	//}
+	//if (params.mode == 3) {
+		//ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		//SumThreshold(mask_T, data, mask, freq_medians, params.n_iter, params.alpha,  params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		//ReplaceRFI(data, data, mask_T, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 	
-	}
+	//}
 
 
     end = std::chrono::high_resolution_clock::now(); 
@@ -287,7 +288,7 @@ void RFIPipeline::Transpose (const cl::Buffer& d_out,
 }
 
 
-void RFIPipeline::EdgeThreshold (const cl::Buffer& d_out, 
+void RFIPipeline::MeanEdgeThreshold (const cl::Buffer& d_out, 
 		                         const cl::Buffer& d_in, 
 								 const cl::Buffer& mads, 
 								 float threshold, 
@@ -297,23 +298,54 @@ void RFIPipeline::EdgeThreshold (const cl::Buffer& d_out,
 {
 	MARK_TIME(begin);
 	
-	CHECK_CL(edge_threshold.setArg(0, d_out));
-	CHECK_CL(edge_threshold.setArg(1, d_in));
-	CHECK_CL(edge_threshold.setArg(2, mads));
-	CHECK_CL(edge_threshold.setArg(3, threshold));
-	CHECK_CL(edge_threshold.setArg(4, max_window_size));
-	CHECK_CL(edge_threshold.setArg(5, m));
-	CHECK_CL(edge_threshold.setArg(6, n));
-	CHECK_CL(edge_threshold.setArg(7, N));
-	CHECK_CL(edge_threshold.setArg(8, nx * (ny + max_window_size + 1) * sizeof(float), NULL));
-	CHECK_CL(edge_threshold.setArg(9, nx * sizeof(float), NULL));
+	CHECK_CL(mean_edge_threshold.setArg(0, d_out));
+	CHECK_CL(mean_edge_threshold.setArg(1, d_in));
+	CHECK_CL(mean_edge_threshold.setArg(2, mads));
+	CHECK_CL(mean_edge_threshold.setArg(3, threshold));
+	CHECK_CL(mean_edge_threshold.setArg(4, max_window_size));
+	CHECK_CL(mean_edge_threshold.setArg(5, m));
+	CHECK_CL(mean_edge_threshold.setArg(6, n));
+	CHECK_CL(mean_edge_threshold.setArg(7, N));
+	CHECK_CL(mean_edge_threshold.setArg(8, nx * (ny + max_window_size + 1) * sizeof(float), NULL));
+	//CHECK_CL(mean_edge_threshold.setArg(9, nx * sizeof(float), NULL));
 
 	// Compute thread layout.
 	int n_threads_x = nx * ((m + nx - 1) / nx);
-	int n_threads_y = ny * ((n + ny - 1) / ny);
+	int n_threads_y = ny;
 
-	CHECK_CL(queue.enqueueNDRangeKernel(edge_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
-	ADD_TIME_SINCE(EdgeThreshold, begin);
+	CHECK_CL(queue.enqueueNDRangeKernel(mean_edge_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+	ADD_TIME_SINCE(MeanEdgeThreshold, begin);
+
+}
+
+
+void RFIPipeline::PointEdgeThreshold (const cl::Buffer& d_out, 
+		                              const cl::Buffer& d_in, 
+								      const cl::Buffer& mads, 
+								      float threshold, 
+								      int max_window_size, 
+								      int m, int n, int N, 
+								      int nx, int ny) 
+{
+	MARK_TIME(begin);
+	
+	CHECK_CL(point_edge_threshold.setArg(0, d_out));
+	CHECK_CL(point_edge_threshold.setArg(1, d_in));
+	CHECK_CL(point_edge_threshold.setArg(2, mads));
+	CHECK_CL(point_edge_threshold.setArg(3, threshold));
+	CHECK_CL(point_edge_threshold.setArg(4, max_window_size));
+	CHECK_CL(point_edge_threshold.setArg(5, m));
+	CHECK_CL(point_edge_threshold.setArg(6, n));
+	CHECK_CL(point_edge_threshold.setArg(7, N));
+	CHECK_CL(point_edge_threshold.setArg(8, nx * (ny + max_window_size + 1) * sizeof(float), NULL));
+	//CHECK_CL(point_edge_threshold.setArg(9, nx * sizeof(float), NULL));
+
+	// Compute thread layout.
+	int n_threads_x = nx * ((m + nx - 1) / nx);
+	int n_threads_y = ny;
+
+	CHECK_CL(queue.enqueueNDRangeKernel(point_edge_threshold, cl::NullRange, cl::NDRange(n_threads_x, n_threads_y), cl::NDRange(nx, ny)));
+	ADD_TIME_SINCE(PointEdgeThreshold, begin);
 
 }
 

@@ -169,7 +169,7 @@ TEST_CASE( "Test: Transpose.", "[Transpose]" )
 }
 
 
-TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" ) 
+TEST_CASE( "Test MeanEdgeThreshold.", "[MeanEdgeThreshold]" ) 
 {
 
 	int max_window_size = 5;
@@ -188,7 +188,7 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 		mask.resize(m * N);
 		std::fill(mask.begin(), mask.end(), 0);
 		
-		// Sequential EdgeThresholding.
+		// Sequential MeanEdgeThresholding.
 		for (int window_size = 1; window_size <= max_window_size; window_size++) {
 			for (int i = 0; i < m; i++) {
 				mads[i] = Mad(vec.begin() + i * N, vec.begin() + (i * N) + n);
@@ -209,8 +209,62 @@ TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" )
 		cl::Buffer gpu_mask_out = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
 		gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
 
-		// Parallel EdgeThresholding.
-		gpu.EdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 32, 32);
+		// Parallel MeanEdgeThresholding.
+		gpu.MeanEdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 1, 32);
+
+		gpu.ReadFromBuffer(results.data(), gpu_mask, m * N * sizeof(uint8_t));
+	
+		CHECK_VEC_EQUAL(mask, results);
+
+	}
+
+}
+
+
+TEST_CASE( "Test PointEdgeThreshold.", "[PointEdgeThreshold]" ) 
+{
+
+	int max_window_size = 5;
+	float threshold = 1;
+	float window_stat;
+	float value;
+
+	std::vector<uint8_t> mads;
+	std::vector<uint8_t> mask;
+	
+	for (int test = 0; test < 10; test++) {
+		InitExperiment(1000, 1000, 0, 256);
+		
+		// Resize vector for m and n.		
+		mads.resize(m);
+		mask.resize(m * N);
+		std::fill(mask.begin(), mask.end(), 0);
+		
+		// Sequential PointEdgeThresholding.
+		for (int window_size = 1; window_size <= max_window_size; window_size++) {
+			for (int i = 0; i < m; i++) {
+				mads[i] = Mad(vec.begin() + i * N, vec.begin() + (i * N) + n);
+				for (int j = 1; j < n - window_size; j++) {
+					window_stat = Mean(vec.begin() + i * N + j, vec.begin() + i * N + j + window_size);
+					for (int k = 0; k < window_size; k++) {
+						value = std::min(std::abs(vec[i * N + j + k] - vec[i * N + j - 1]), std::abs(vec[i * N + j + k] - vec[i * N + j + window_size]));
+						if (std::abs(value / (1.4826 * mads[i])) > threshold) {
+							mask[i * N + j + k] = 1;
+						}
+					}
+
+				}
+			}
+		}
+
+		// Copy memory to GPU.
+		cl::Buffer gpu_mads = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
+		cl::Buffer gpu_mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
+		cl::Buffer gpu_mask_out = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
+		gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
+
+		// Parallel PointEdgeThresholding.
+		gpu.PointEdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 1, 32);
 
 		gpu.ReadFromBuffer(results.data(), gpu_mask, m * N * sizeof(uint8_t));
 	
@@ -829,7 +883,7 @@ TEST_CASE( "Test: Replace masked values with 0", "[ReplaceRFIConstant]" )
 
 
 
-TEST_CASE( "Tsfsfdedfst EdgeThreshold.", "[del2]" ) {
+TEST_CASE( "Tsfsfdedfst MeanEdgeThreshold.", "[del2]" ) {
 
 	float threshold = 1;
 	int window_size = 3;
@@ -884,7 +938,7 @@ TEST_CASE( "Tsfsfdedfst EdgeThreshold.", "[del2]" ) {
 
 
 
-TEST_CASE( "Tedfst EdgeThreshold.", "[del]" ) {
+TEST_CASE( "Tedfst MeanEdgeThreshold.", "[del]" ) {
 
 	float threshold = 1;
 	int window_size = 3;
@@ -971,7 +1025,7 @@ TEST_CASE( "Tedfst EdgeThresfdsfsdfshold.", "[del3]" ) {
 	gpu.WriteToBuffer(thresholds.data(), gpu_thresholds, m * sizeof(uint8_t));
 		
 	for (int test = 0; test < 2; test++) {
-		//gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n,n, 16, 16);
+		//gpu.MeanEdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, 1, m, n,n, 16, 16);
 		//gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, window_size, m, n, 1, 256);
 	}
 	
@@ -981,7 +1035,7 @@ TEST_CASE( "Tedfst EdgeThresfdsfsdfshold.", "[del3]" ) {
 	//for (int i = 0; i < 8; i++) {
 		//auto begin = std::chrono::high_resolution_clock::now();
 		//for (int test = 0; test < 1000; test++) {
-			//gpu.EdgeThreshold(gpu_mask_out, data, gpu_mask, gpu_mads, threshold, std::pow(2,i), m, n, 1, 256);
+			//gpu.MeanEdgeThreshold(gpu_mask_out, data, gpu_mask, gpu_mads, threshold, std::pow(2,i), m, n, 1, 256);
 		//}
 		//gpu.queue.finish();
 		//auto end = std::chrono::high_resolution_clock::now();
@@ -995,7 +1049,7 @@ TEST_CASE( "Tedfst EdgeThresfdsfsdfshold.", "[del3]" ) {
 		//gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, w, m, n, 1, 256);
 		//for (int window_size = 1; window_size <= w; window_size++) {
 			//gpu.SumThreshold(gpu_mask_out, data, gpu_mask, gpu_thresholds, window_size, m, n, 1, 256);
-		gpu.EdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, w, m, n,n, 1, 256);
+		gpu.MeanEdgeThreshold(gpu_mask_out, data, gpu_mads, threshold, w, m, n,n, 1, 256);
 		//}
 	}
 	gpu.queue.finish();
@@ -1008,7 +1062,7 @@ TEST_CASE( "Tedfst EdgeThresfdsfsdfshold.", "[del3]" ) {
 
 
 
-//TEST_CASE( "Test EdgeThreshold.", "[edge_threshold], [rfi]" ) {
+//TEST_CASE( "Test MeanEdgeThreshold.", "[edge_threshold], [rfi]" ) {
 
 	//float threshold = 1;
 	//uint8_t median;
@@ -1044,7 +1098,7 @@ TEST_CASE( "Tedfst EdgeThresfdsfsdfshold.", "[del3]" ) {
 		//cl::Buffer gpu_mads = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
 		//cl::Buffer gpu_mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * n * sizeof(uint8_t));
 		//gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
-		//gpu.EdgeThreshold(gpu_mask, gpu_mads, d_in, threshold, m, n, 12, 12);
+		//gpu.MeanEdgeThreshold(gpu_mask, gpu_mads, d_in, threshold, m, n, 12, 12);
 
 		//gpu.ReadFromBuffer(results.data(), gpu_mask, n * m * sizeof(uint8_t));
 	

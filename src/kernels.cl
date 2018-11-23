@@ -70,76 +70,179 @@ void scalar_division (global float* d_out,
 
 }
 
+#define MEAN_EDGE_UNROLLED_LOOP(w) \
+	if (i + w >= n) return; \
+	window_sum += ldata[tid + w - 1]; \
+	value = min(fabs((window_sum / w) - ldata[tid - 1]), fabs((window_sum / w) - ldata[tid + w])); \
+	if (value > T) { \
+		for (int j = 0; j < w; j++) { \
+			m_out[gid_x * N + i + j] = 1; \
+		} \
+	} \
+	if (max_window_size == w) continue;
+
 kernel
-void edge_threshold(global uchar *m_out, 
-				    global uchar* d_in, 
+void mean_edge_threshold(global uchar *m_out, 
+					global uchar *d_in, 
 					global uchar *mads, 
 					float threshold, 
 					int max_window_size, 
-					int m, int n, int N, 
-					local float *ldata, 
-					local float *lmads) 
+					int m, int n, int N,
+					local float *ldata)
 {
 	int gid_x = get_global_id(0);
-	int gid_y = get_global_id(1) + 1; // 1 offset because first column is skipped.
-	int tid_x = get_local_id(0);
-	int tid_y = get_local_id(1) + 1; // 1 offset because first column is skipped.
-	int tile_width = 1 + get_local_size(1) + max_window_size; 
-	int tid = tid_x * tile_width + tid_y;
-	int gid = gid_x * N + gid_y;
+	int gid_y = get_global_id(1);
+	int ny = get_local_size(1);
+	int tid = get_local_id(1) + 1;
 
-	// Read data into shared local memory.	
-	if (gid_x < m && gid_y < n) {
-		ldata[tid] = d_in[gid];
+	if (gid_x >= m) return;
+
+
+	float value;
+	float T = mads[gid_x] * 1.4826 * threshold;
+
+
+	// Do first step.
+	ldata[tid] = d_in[gid_x * N + tid - 1];	
+	if (ny - tid < max_window_size) {
+		ldata[tid + max_window_size] = d_in[gid_x * N + (tid - 1) + max_window_size];
 	}
-
-	// Read Mad and left most edge into shared local memory.
-	if (tid_y == 1) {
-		lmads[tid_x] = mads[gid_x];
-		ldata[tid - 1] = d_in[gid - 1];
-	}
-
-	// Read data into shared local memory that is needed by the right most threads 
-	// in the work group but are not directly computed as part of the work group.
-	int d = get_local_size(0) - tid_y - 1;  
-	if (d <= max_window_size && gid_y + max_window_size < n) {
-		ldata[tid + max_window_size] = d_in[gid + max_window_size];
-	}
-
-	// Wait for all threads to have initialised shared local memory.
 	barrier(CLK_LOCAL_MEM_FENCE);
 
-	// Do computation on shared local memory.
-	float window_stat;
+	float window_sum = 0.0;
+	if (tid != 1) {
+		for (int w = 1; w <= max_window_size; w++) {
+			window_sum += ldata[tid + w - 1];
+			value = min(fabs((window_sum / w) - ldata[tid - 1]), fabs((window_sum / w) - ldata[tid + w]));
+			if (value > T) {
+				for (int j = 0; j < w; j++) {
+					m_out[gid_x * N + tid - 1 + j] = 1;	
+				}
+			}
+		}
+	}
+
+	// Do the steps almost to the end.
+	for (int i = gid_y + ny; i < n; i += ny) {
+		ldata[tid] = d_in[gid_x * N + i];	
+		if (tid == 1)  ldata[0]       = d_in[gid_x * N + i - 1];
+		if (ny - tid < max_window_size) {
+			ldata[tid + max_window_size] = d_in[gid_x * N + i + max_window_size];
+		}
+		barrier(CLK_LOCAL_MEM_FENCE);
+
+
+		window_sum = 0.0;
+		MEAN_EDGE_UNROLLED_LOOP(1);
+		MEAN_EDGE_UNROLLED_LOOP(2);
+		MEAN_EDGE_UNROLLED_LOOP(3);
+		MEAN_EDGE_UNROLLED_LOOP(4);
+		MEAN_EDGE_UNROLLED_LOOP(5);
+		MEAN_EDGE_UNROLLED_LOOP(6);
+		MEAN_EDGE_UNROLLED_LOOP(7);
+		MEAN_EDGE_UNROLLED_LOOP(8);
+		MEAN_EDGE_UNROLLED_LOOP(9);
+		MEAN_EDGE_UNROLLED_LOOP(10);
+		for (int w = 11; w <= max_window_size; w++) {
+			if (i + w >= n) return;
+			window_sum += ldata[tid + w - 1];
+			value = min(fabs((window_sum / w) - ldata[tid - 1]), fabs((window_sum / w) - ldata[tid + w]));
+			if (value > T) {
+				for (int j = 0; j < w; j++) {
+					m_out[gid_x * N + i + j] = 1;
+				}
+			}
+		}
+	}
+
+}
+
+
+#define POINT_EDGE_UNROLLED_LOOP(w) \
+	if (i + w >= n) return; \
+	for (int k = 0; k < w; k++) { \
+		value = min(fabs(ldata[tid + k] - ldata[tid - 1]), fabs(ldata[tid + k] - ldata[tid + w])); \
+		if (value > T) { \
+			m_out[gid_x * N + i + k] = 1; \
+		} \
+	} \
+	if (max_window_size == w) continue;
+
+
+
+kernel
+void point_edge_threshold(global uchar *m_out, 
+					global uchar *d_in, 
+					global uchar *mads, 
+					float threshold, 
+					int max_window_size, 
+					int m, int n, int N,
+					local float *ldata)
+{
+	int gid_x = get_global_id(0);
+	int gid_y = get_global_id(1);
+	int ny = get_local_size(1);
+	int tid = get_local_id(1) + 1;
+
+	if (gid_x >= m) return;
+
+
 	float value;
-	for (int window_size = 1; window_size <= max_window_size; window_size++) {
-		// Return if current window reaches beyond end of data.
-		if (gid_x >= m || gid_y >= n - window_size) { 
-			return;
+	float T = mads[gid_x] * 1.4826 * threshold;
+
+
+	// Do first step.
+	ldata[tid] = d_in[gid_x * N + tid - 1];	
+	if (ny - tid < max_window_size) {
+		ldata[tid + max_window_size] = d_in[gid_x * N + (tid - 1) + max_window_size];
+	}
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	if (tid != 1) {
+		for (int w = 1; w <= max_window_size; w++) {
+			for (int k = 0; k < w; k++) {
+				value = min(fabs(ldata[tid + k] - ldata[tid - 1]), fabs(ldata[tid + k] - ldata[tid + w]));
+				if (value > T) {
+					m_out[gid_x * N + tid - 1 + k] = 1;
+				}
+			}
 		}
+	}
 
-		// Compute window statistic.
-		window_stat = 0;
-		for (int i = 0; i < window_size; i++) {
-			window_stat += ldata[tid + i];
-			
+	// Do the steps almost to the end.
+	for (int i = gid_y + ny; i < n; i += ny) {
+		ldata[tid] = d_in[gid_x * N + i];	
+		if (tid == 1)  ldata[0]       = d_in[gid_x * N + i - 1];
+		if (ny - tid < max_window_size) {
+			ldata[tid + max_window_size] = d_in[gid_x * N + i + max_window_size];
 		}
-		window_stat /= window_size;
+		barrier(CLK_LOCAL_MEM_FENCE);
 
-		// Compute edge threshold.
-		value = min(fabs(window_stat - ldata[tid - 1]), fabs(window_stat - ldata[tid + window_size]));
+		POINT_EDGE_UNROLLED_LOOP(1);
+		POINT_EDGE_UNROLLED_LOOP(2);
+		POINT_EDGE_UNROLLED_LOOP(3);
+		POINT_EDGE_UNROLLED_LOOP(4);
+		POINT_EDGE_UNROLLED_LOOP(5);
+		POINT_EDGE_UNROLLED_LOOP(6);
+		POINT_EDGE_UNROLLED_LOOP(7);
+		POINT_EDGE_UNROLLED_LOOP(8);
+		POINT_EDGE_UNROLLED_LOOP(9);
+		POINT_EDGE_UNROLLED_LOOP(10);
 
-		// Check if window should be masked.
-		if (value / lmads[tid_x] > (1.4826 * threshold)) {
-			// Mask window.
-			for (int i = 0; i < window_size; i++) {
-				m_out[gid + i] = 1;
+		for (int w = 11; w <= max_window_size; w++) {
+			if (i + w >= n) return;
+			for (int k = 0; k < w; k++) {
+				value = min(fabs(ldata[tid + k] - ldata[tid - 1]), fabs(ldata[tid + k] - ldata[tid + w]));
+				if (value > T) {
+					m_out[gid_x * N + i + k] = 1;
+				}
 			}
 
 		}
 	}
+
 }
-	
+
 
 kernel
 void sum_threshold(global uchar *m_out, 

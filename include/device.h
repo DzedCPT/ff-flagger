@@ -31,7 +31,8 @@ public:
 	cl::Kernel transpose;
 	cl::Kernel compute_mads;
 	cl::Kernel sum_threshold;
-	cl::Kernel edge_threshold;
+	cl::Kernel mean_edge_threshold;
+	cl::Kernel point_edge_threshold;
 	cl::Kernel scalar_division;
 	cl::Kernel compute_medians;
 	cl::Kernel compute_means_old;
@@ -156,13 +157,23 @@ public:
 				    int m, int n, 
 				    int nx, int ny);
 
-	void EdgeThreshold (const cl::Buffer& d_out, 
+	void MeanEdgeThreshold (const cl::Buffer& d_out, 
 			            const cl::Buffer& d_in, 
 					    const cl::Buffer& mads, 
 					    float threshold, 
 					    int max_window_size, 
 					    int m, int n, int N,
 					    int nx, int ny);
+
+
+	void PointEdgeThreshold (const cl::Buffer& d_out, 
+			                const cl::Buffer& d_in, 
+					        const cl::Buffer& mads, 
+					        float threshold, 
+					        int max_window_size, 
+					        int m, int n, int N,
+					        int nx, int ny);
+
 
 	void SumThreshold (const cl::Buffer& m_out, 
 			           const cl::Buffer& d_in, 
