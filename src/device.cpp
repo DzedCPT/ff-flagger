@@ -403,11 +403,11 @@ void RFIPipeline::SIRRankOperator (const cl::Buffer m_out,
 	std::vector<int> psi_partial_min_index(n);
 	std::vector<int> psi_partial_max_index(n);
 	std::vector<uint8_t> host_mask(m * N);
-	ReadFromBuffer(host_mask.data(), m_in, n * N * sizeof(uint8_t));
+	ReadFromBuffer(host_mask.data(), m_in, m * N * sizeof(uint8_t));
 
 	for (int kk = 0; kk < m; kk++) {
 		for (int j = 0; j < n; j++) {
-			psi[j] = density_ratio_threshold - host_mask[kk * N + j];
+			psi[j] = density_ratio_threshold - 1 + host_mask[kk * N + j];
 		}
 		psi_partial_sum[0] = 0;
 		for (int j = 0; j < n; j++) {
@@ -435,15 +435,15 @@ void RFIPipeline::SIRRankOperator (const cl::Buffer m_out,
 
 		for (int j = 0; j < n; j++) {
 			if (psi_partial_sum[psi_partial_max_index[j]] - psi_partial_sum[psi_partial_min_index[j]] >= 0) {
-				host_mask[j] = 0;    
+				host_mask[kk * N + j] = 1;    
 			}    
 			else {
-				host_mask[j] = 1;    
+				host_mask[kk * N + j] = 0;    
 			}
 
 		}
 	}
-	WriteToBuffer(host_mask.data(), m_out, n * N * sizeof(uint8_t));
+	WriteToBuffer(host_mask.data(), m_out, m * N * sizeof(uint8_t));
 
 
 }
