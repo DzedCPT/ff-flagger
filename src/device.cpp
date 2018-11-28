@@ -159,9 +159,6 @@ void RFIPipeline::InitMemBuffers (const int mode)
 {
 	if (mode == 0) return;
 
-	data_T = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-	mask   = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-	mask_T = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 	freq_medians = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
 
 	if (mode == 1 || mode == 3) {
@@ -186,21 +183,21 @@ void RFIPipeline::Flag (const cl::Buffer& data)
     
     begin = std::chrono::high_resolution_clock::now(); 
 	
-	if (params.mode == 2) {
-		for (int i = 1; i <= params.n_iter; i++) {
+	if (params.mode == 2 || params.mode == 3) {
 			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 			EdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
 			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		}
 	}
-	if (params.mode == 1) {
+	if (params.mode == 1 || params.mode == 3) {
 		ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		ComputeMeans(time_means, data, params.n_channels, params.n_samples, params.n_padded_samples, 128, 1024, 4, 256);
+		ClearBuffer(count, sizeof(int));
 		int num_flagged_samples = 0;
+		float mean, std;
 		for (int i = 0; i < params.n_iter; i++) {
-			float mean = FloatReduce(time_temp, time_means, params.n_samples) / (params.n_samples - num_flagged_samples);
-			float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+			mean = FloatReduce(time_temp, time_means, params.n_samples) / (params.n_samples - num_flagged_samples);
+			std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
 			num_flagged_samples = DetectOutliers2(flagged_samples, time_means, count, mean, std, params.std_threshold, params.n_samples, 128);
 		}
 		FlagTimeSamples(data, flagged_samples, freq_medians, num_flagged_samples, params.n_channels, params.n_samples, params.n_padded_samples, 128);
@@ -210,6 +207,7 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 	
 	}
+	queue.finish();
     end = std::chrono::high_resolution_clock::now(); 
     time += std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count();
 

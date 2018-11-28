@@ -912,13 +912,13 @@ TEST_CASE( "Tedfst EdsffgeThreshold.", "[del2]" ) {
 
 		
 	for (int test = 0; test < 5; test++) {
-		gpu.DetectOutliers2 (d_out, 
-						 d_in, 
-						 d_count, 
-						 mean, 
-						 std, 
-						 threshold, 
-						 n, 12);
+		//gpu.DetectOutliers2 (d_out, 
+						 //d_in, 
+						 //d_count, 
+						 //mean, 
+						 //std, 
+						 //threshold, 
+						 //n, 12);
 		gpu.FlagTimeSamples (d_data, 
 						  d_out, 
 						  d_medians, 
@@ -934,7 +934,7 @@ TEST_CASE( "Tedfst EdsffgeThreshold.", "[del2]" ) {
 	gpu.queue.flush();
 
 	auto begin = std::chrono::high_resolution_clock::now();
-	for (int test = 0; test < 100; test++) {
+	for (int test = 0; test < 1; test++) {
 		gpu.DetectOutliers2 (d_out, 
 			             d_in, 
 			             d_count, 
@@ -945,18 +945,18 @@ TEST_CASE( "Tedfst EdsffgeThreshold.", "[del2]" ) {
 		int count;
 		gpu.ReadFromBuffer(&count, d_count, sizeof(int));
 		gpu.FlagTimeSamples (d_data, 
-			              d_out, 
-			              d_medians, 
-						  count,
-				   		  m, n, N,
-				   		  512);
+						     d_out, 
+						     d_medians, 
+						     count,
+							 m, n, N,
+							 64);
 
 
 
 	}
 	gpu.queue.finish();
 	auto end = std::chrono::high_resolution_clock::now();
-	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 100 << std::endl;
+	std::cout << std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count() / 1 << std::endl;
 
 	//m = 43657;
 	//n = 1536;
