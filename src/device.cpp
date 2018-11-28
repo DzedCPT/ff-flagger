@@ -164,14 +164,14 @@ void RFIPipeline::InitMemBuffers (const int mode)
 	mask_T = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
 	freq_medians = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
 
-	if (mode == 1 || mode == 3) {
+	//if (mode == 1 || mode == 3) {
 		time_means = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
 		time_temp = InitBuffer(CL_MEM_READ_WRITE, params.n_samples * sizeof(float));
-	}
+	//}
 
-	if (mode == 2 || mode == 3) {
+	//if (mode == 2 || mode == 3) {
 		freq_mads = InitBuffer(CL_MEM_READ_WRITE, params.n_channels * sizeof(uint8_t));
-	}
+	//}
 }
 
 
@@ -183,24 +183,86 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 	if (params.mode == 0) return;
     
     begin = std::chrono::high_resolution_clock::now(); 
-	
-	if (params.mode == 2 || params.mode == 3) {
-		for (int i = 1; i <= params.n_iter; i++) {
-			ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-			ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-			PointEdgeThreshold(mask, data, freq_mads, params.mad_threshold, i, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
-			//if (params.sir) {
-				//SIRRankOperator(mask, mask, params.density_ratio_threshold, params.n_channels, params.n_samples, params.n_padded_samples);
-			//}
+	if (params.mode == 1) {
+		for (int i = 0; i < params.n_iter; i++) {
+			ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+			Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
+			ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+			ComputeMeansOld(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
+			float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
+			float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+			DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
+			MaskRows(mask_T, time_means, params.n_samples, params.n_channels, params.n_channels, 32, 32);
+			Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
 			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		}
 	}
+
+	if (params.mode == 2) {
+			
+		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		PointEdgeThreshold(mask, data, freq_mads, params.mad_threshold, params.n_iter, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+		ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		queue.finish();
+
+	}
+	if (params.mode == 3) {
+		ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		PointEdgeThreshold(mask, data, freq_mads, params.mad_threshold, params.n_iter, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+		ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		queue.finish();
+
+		for (int i = 0; i < params.n_iter; i++) {
+			Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
+			ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+			ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+			ComputeMeansOld(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
+			float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
+			float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+			DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
+			MaskRows(mask_T, time_means, params.n_samples, params.n_channels, params.n_channels, 32, 32);
+			Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
+			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		}
+	}
+
+	if (params.mode == 4) {
+		for (int i = 0; i < params.n_iter; i++) {
+			ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+			Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
+			ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+			ComputeMeansOld(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
+			float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
+			float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
+			DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
+			MaskRows(mask_T, time_means, params.n_samples, params.n_channels, params.n_channels, 32, 32);
+			Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
+			ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		}
+
+		//queue.finish();
+		//ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		//ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		//PointEdgeThreshold(mask, data, freq_mads, params.mad_threshold, params.n_iter, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+		//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		//queue.finish();
+
+	}
+	//if (params.mode == 2 || params.mode == 3) {
+		//ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
+		//ComputeMads(freq_mads, freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+		//PointEdgeThreshold(mask, data, freq_mads, params.mad_threshold, params.n_iter, params.n_channels, params.n_samples, params.n_padded_samples, 1, 512);
+		//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
+	//}
+	//queue.finish();
 	//if (params.mode == 1 || params.mode == 3) {
 		//for (int i = 0; i < params.n_iter; i++) {
 			//Transpose(data_T, data, params.n_channels, params.n_padded_samples, 16, 16);
 			//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 			//ClearBuffer(mask_T, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-			//ComputeMeans(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
+			//ComputeMeansOld(time_means, data_T, params.n_samples, params.n_channels, params.n_channels);
 			//float mean = FloatReduce(time_temp, time_means, params.n_samples) / params.n_samples;
 			//float std  = ComputeStd(time_means, time_temp, mean, params.n_samples, 1024);
 			//DetectOutliers(time_means, time_means, mean, std, params.std_threshold, params.n_samples, 128);
@@ -208,13 +270,6 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			//Transpose(mask, mask_T, params.n_padded_samples, params.n_channels, 16, 16);
 			//ReplaceRFI(data, data, mask, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
 		//}
-	//}
-	//if (params.mode == 3) {
-		//ClearBuffer(mask, params.n_channels * params.n_padded_samples * sizeof(uint8_t));
-		//ComputeMedians(freq_medians, data, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		//SumThreshold(mask_T, data, mask, freq_medians, params.n_iter, params.alpha,  params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-		//ReplaceRFI(data, data, mask_T, freq_medians, params.rfi_replace_mode, params.n_channels, params.n_samples, params.n_padded_samples, 16, 16);
-	
 	//}
 
 

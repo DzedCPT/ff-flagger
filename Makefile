@@ -19,7 +19,7 @@ DAS := prun -np 1 -native '-C TitanX --gres=gpu:1'
 
 make: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(SRC_DIR)/main.cpp -o fflagger
-	$(DAS) ./fflagger -i ~/real.fil -o ~/del.fil -m 1 --rfi_mode 2 --sir
+	$(DAS) ./fflagger -i ~/real.fil -o ~/del.fil -m 3 --rfi_mode 2 --sir
 
 test: $(OBJS) $(SRCS)
 	$(CXX) $(CFLAGS) $(LIBS) $(INCLUDES) $(OBJS) $(TEST_DIR)/tests.cpp -o $(BUILD_DIR)/tests
