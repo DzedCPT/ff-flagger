@@ -76,17 +76,8 @@ public:
 		int n_samples;
 		int n_channels;
 		int n_padded_samples;
-<<<<<<< HEAD
-		float mad_threshold;
-		float std_threshold;
-		RFIReplaceMode rfi_replace_mode;
-		float alpha;
-		bool sir;
-		float density_ratio_threshold;
-=======
 		float edge_threshold;
 		float zero_dm_threshold;
->>>>>>> 93a2406c96428353e214eb9015d2ab91f5143487
 	};
 
 	const Params params;
