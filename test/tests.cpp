@@ -169,75 +169,7 @@ TEST_CASE( "Test: Transpose.", "[Transpose]" )
 }
 
 
-TEST_CASE( "Test EdgeThreshold.", "[EdgeThreshold]" ) 
-{
 
-	int max_window_size = 5;
-	float threshold = 1;
-	float window_stat;
-	float value;
-
-	std::vector<uint8_t> mads;
-	std::vector<uint8_t> mask;
-	
-	for (int test = 0; test < 10; test++) {
-		InitExperiment(1000, 1000, 0, 256);
-		
-		// Resize vector for m and n.		
-		mads.resize(m);
-		mask.resize(m * N);
-		std::fill(mask.begin(), mask.end(), 0);
-		std::fill(results.begin(), results.end(), 0);
-		
-		// Sequential EdgeThresholding.
-		for (int window_size = 1; window_size <= max_window_size; window_size++) {
-			for (int i = 0; i < m; i++) {
-				mads[i] = Mad(vec.begin() + i * N, vec.begin() + (i * N) + n);
-				for (int j = 1; j < n - window_size; j++) {
-					window_stat = Mean(vec.begin() + i * N + j, vec.begin() + i * N + j + window_size);
-					value = std::min(std::abs(window_stat - vec[i * N + j - 1]), std::abs(window_stat - vec[i * N + j + window_size]));
-					if (std::abs(value / (1.4826 * mads[i])) > threshold) {
-						std::fill(mask.begin() + i * N + j, mask.begin() + i * N + j + window_size, 1);
-					}
-
-				}
-			}
-		}
-
-		// Copy memory to GPU.
-		cl::Buffer gpu_mads = gpu.InitBuffer(CL_MEM_READ_WRITE , m * sizeof(uint8_t));
-		cl::Buffer gpu_mask = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
-		cl::Buffer gpu_mask_out = gpu.InitBuffer(CL_MEM_READ_WRITE , m * N * sizeof(uint8_t));
-		gpu.WriteToBuffer(mads.data(), gpu_mads, m * sizeof(uint8_t));
-
-		// Parallel EdgeThresholding.
-		gpu.EdgeThreshold(gpu_mask, d_in, gpu_mads, threshold, max_window_size, m, n, N, 1, 8);
-
-		gpu.ReadFromBuffer(results.data(), gpu_mask, m * N * sizeof(uint8_t));
-		//for (int i = 0; i < m; i++) {
-			//for (int j = 0; j < n; j++) {
-				//if (mask[i * N + j] == results[i * N + j]) {
-					//cout << 0 << ",";	
-				//}
-				//else {
-					//cout << 1 << ",";
-				//}
-				////cout << (int) vec[i * N + j] << ",";
-			//}
-			//cout << endl;
-		//}
-		//cout << endl;
-		//for (int i = 0; i < m; i++) {
-			//for (int j = 0; j < n; j++) {
-				//cout << (int) results[i * N + j] << ",";
-			//}
-			//cout << endl;
-		//}
-		CHECK_VEC_EQUAL(mask, results);
-
-	}
-
-}
 
 
 TEST_CASE( "Test SumThreshold.", "[SumThreshold]" ) 
