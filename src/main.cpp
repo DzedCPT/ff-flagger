@@ -8,24 +8,6 @@
 
 #include <sys/time.h>
 
-//struct Params {
-	//int mode;
-	//float time;
-	//int n_samples;
-	//int max_window_size;
-	//int n;
-	//float mad_threshold;
-	//float std_threshold;
-
-//};
-
-//void ProcessFilterBank(FilterBank<uint8_t>& in_fil_file, 
-					   //FilterBank<uint8_t>& out_fil_file, 
-					   //float threshold, 
-					   //float row_threshold, 
-					   //const size_t nbins, 
-					   //float total_time = 0) 
-
 void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file, 
 		               FilterBank<uint8_t>& out_fil_file, 
 					   const RFIPipeline::Params& params,
@@ -50,15 +32,15 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 		rfi_pipeline.WriteToBuffer(spectra.data(), uint_buffer_T, spectra.size() * sizeof(uint8_t));
 		rfi_pipeline.Transpose(uint_buffer, uint_buffer_T, params.n_samples, in_fil_file.header.nchans, 12, 12);
 
-		//MARK_TIME(mark);
-
+		rfi_pipeline.queue.finish();
 		begin = std::chrono::high_resolution_clock::now();
+
 		rfi_pipeline.Flag(uint_buffer);
+
 		rfi_pipeline.queue.finish();
 		end = std::chrono::high_resolution_clock::now();
-		rfi_timer += std::chrono::duration_cast<std::chrono::milliseconds>(end-begin).count();
+		rfi_timer += std::chrono::duration_cast<std::chrono::microseconds>(end-begin).count();
 
-		//ADD_TIME_SINCE_MARK(timer, mark);
 		rfi_pipeline.Transpose(uint_buffer_T, uint_buffer, in_fil_file.header.nchans, params.n_samples, 12, 12);
 		rfi_pipeline.ReadFromBuffer(spectra.data(), uint_buffer_T, spectra.size() * sizeof(uint8_t));
 
@@ -67,8 +49,8 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 				  << std::min(in_fil_file.tellg() / total_time, (float) 1.0) * 100
 				  << " % " << std::flush;
 	}
-	//std::cout << std::endl;
-	std::cout << "\rRFI mitigation took " << rfi_timer << " milliseconds to process " << total_time << " seconds of data." << std::endl;
+	std::cout << "\rRFI mitigation took " << rfi_timer << " microseconds to process " << total_time << " seconds of data." << std::endl;
+	std::cout << rfi_pipeline.time << std::endl;
 	rfi_pipeline.PrintTimers();
 
 
@@ -77,44 +59,45 @@ void ProcessFilterBank (FilterBank<uint8_t>& in_fil_file,
 
 int main (int argc, char *argv[]) 
 {
-	CLI::App app("AmberAlert - RFI mitigation\nFlag time bins and frequency channels with extreme mean values.");
+	CLI::App app("FF-Flagger RFI mitigation software.");
+
+	// Read in command line arguments.
+
+	// Required input and output files.
 	std::string in_file_path;
-	app.add_option("-i,--input", in_file_path, "path to filterbank file read from.")->required();
+	app.add_option("-i", in_file_path, "Path to input filterbank file.")->required();
 
 	std::string out_file_path;
-	app.add_option("-o,--output", out_file_path, "path to filterbank file written to.")->required();
+	app.add_option("-o", out_file_path, "Path to output filterbank file.")->required();
 
+	// Read in RFI mitigation parameters.
 	RFIPipeline::Params params;
-	params.mode = 1;
-	app.add_option("-m,--mode", params.mode, "# of standard deviations from the mean required for the band to be flagged.", true);
-	
+
+	params.mode = 3;
+	app.add_option("-m", params.mode, "RFI Mode, options are:\n\t\t\t\t1. Point edge-thresholding.\n\t\t\t\t2. Flag 0-DM RFI bursts.\n\t\t\t\t3. Full FF-Flagger pipeline", true);
+
 	float time = 0;
-	app.add_option("-s,--seconds", time, "# of seconds that will be processed.", true);
+	app.add_option("-s", time, "Number of seconds of data to process. Default is entire file.", true);
+
+	params.n_iter = 5;
+	app.add_option("-n", params.n_iter, "Number of 0 DM RFI removal loops.", true);
+
+	params.max_window_size = 3;
+	app.add_option("-w", params.max_window_size, "Maximum window size used for point edge-thresholding.", true);
+
+	params.zero_dm_threshold = 2.5;
+	app.add_option("-z", params.zero_dm_threshold, "Threshold for 0 DM RFI removal.", true);
+
+	params.edge_threshold = 3.5;
+	app.add_option("-p", params.edge_threshold, "Threshold used for edge-thresholding.", true);
+
+	params.stat_freq = 1;
+	app.add_option("-f", params.stat_freq, "Frequency for recomputing MADs and medians.", true);
+	
 
 	params.n_samples = 43657;
-	app.add_option("--num_samples", params.n_samples, "# of time bins per event.", true);
+	app.add_option("--num_samples", params.n_samples, "Number of time samples per RFI mitigation window.", true);
 	params.n_padded_samples = params.n_samples;
-
-	params.n_iter = 1;
-	app.add_option("-n,--num_iteratations", params.n_iter, "# of time bins per event.", true);
-
-	params.mad_threshold = 3.5;
-	app.add_option("--mad_threshold", params.mad_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
-
-	params.std_threshold = 2.5;
-	app.add_option("--std_threshold", params.std_threshold, "# of standard deviations from the mean required for the band to be flagged.", true);
-
-	params.alpha = 6;
-	app.add_option("-a,--alpha", params.alpha, "# of standard deviations from the mean required for the band to be flagged.", true);
-
-	params.sir = false;
-	app.add_flag("--sir", params.sir, "");
-
-	params.density_ratio_threshold = 0.8;
-	app.add_option("-d,--density_ratio", params.density_ratio_threshold, "", true);
-
-	int rfi_mode = 2;
-	app.add_option("--rfi_mode", rfi_mode, "# of standard deviations from the mean required for the band to be flagged.", true);
 
 	CLI11_PARSE(app, argc, argv);
 
@@ -122,17 +105,6 @@ int main (int argc, char *argv[])
 	FilterBank<uint8_t> out_fil_file(out_file_path, in_fil_file.header);
 	
 	params.n_channels = in_fil_file.header.nchans;
-	if (rfi_mode == 1) {
-		params.rfi_replace_mode = RFIPipeline::RFIReplaceMode::ZEROS;
-	}
-	else if (rfi_mode == 2) {
-		params.rfi_replace_mode = RFIPipeline::RFIReplaceMode::MEANS;
-	}
-	else if (rfi_mode == 3) {
-		params.rfi_replace_mode = RFIPipeline::RFIReplaceMode::MEDIANS;
-	}
-    
-
 
 	ProcessFilterBank(in_fil_file, out_fil_file, params, time);
 

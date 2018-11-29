@@ -2269,7 +2269,7 @@ class App {
 
     /// Create a new program. Pass in the same arguments as main(), along with a help string.
     explicit App(std::string description_ = "", std::string name = "") : App(description_, name, nullptr) {
-        set_help_flag("-h,--help", "print usage details and exit");
+        set_help_flag("-h,--help", "Print usage details and exit");
     }
 
     /// virtual destructor

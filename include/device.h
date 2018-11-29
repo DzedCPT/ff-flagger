@@ -31,15 +31,16 @@ public:
 	cl::Kernel transpose;
 	cl::Kernel compute_mads;
 	cl::Kernel sum_threshold;
-	cl::Kernel edge_threshold;
 	cl::Kernel scalar_division;
 	cl::Kernel compute_medians;
 	cl::Kernel compute_means_old;
+	cl::Kernel flag_time_samples;
 	cl::Kernel detect_outliers;
 	cl::Kernel compute_col_sums;
 	cl::Kernel compute_deviation;
 	cl::Kernel replace_rfi_medians;
 	cl::Kernel replace_rfi_constant;
+	cl::Kernel point_edge_threshold;
 	cl::Kernel mask_row_sum_threshold;
 
 	// OpenCL enviroment variables.
@@ -51,38 +52,41 @@ public:
 	// cl_int used to get error reporting from OpenCL.
 	cl_int error_code;
 
-	cl::Buffer data_T;
-	cl::Buffer mask;
-	cl::Buffer mask_T;
-
 	cl::Buffer freq_medians;
-	cl::Buffer time_medians;
-
-	cl::Buffer time_mads;
 	cl::Buffer freq_mads;
 
 	cl::Buffer time_means;
 	cl::Buffer time_temp;
 
-	enum RFIReplaceMode {MEANS, MEDIANS, ZEROS};
-
+	cl::Buffer flagged_samples;
+	cl::Buffer count;
+	
     double time = 0.0;
 	std::chrono::time_point<std::chrono::high_resolution_clock> begin;
 	std::chrono::time_point<std::chrono::high_resolution_clock> end;
 	std::map<std::string, Time> time_map;
 
+	int num_events = 0;
+
 	struct Params {
 		int mode;
 		int n_iter;
+		int max_window_size;
+		int stat_freq;
 		int n_samples;
 		int n_channels;
 		int n_padded_samples;
+<<<<<<< HEAD
 		float mad_threshold;
 		float std_threshold;
 		RFIReplaceMode rfi_replace_mode;
 		float alpha;
 		bool sir;
 		float density_ratio_threshold;
+=======
+		float edge_threshold;
+		float zero_dm_threshold;
+>>>>>>> 93a2406c96428353e214eb9015d2ab91f5143487
 	};
 
 	const Params params;
@@ -101,16 +105,17 @@ public:
 	static Params ReadConfigFile(const std::string file_name);
 
     static void PrintParams(const Params& params) {
-        std::cout << "RFI Mode: "        << params.mode << "\n"
-                  << "Num Iterations: "  << params.n_iter << "\n"
-                  << "Sigma Threshold: " << params.std_threshold << "\n"
-                  << "MAD Threshold: "   << params.mad_threshold << std::endl;
+		std::cout << "RFI Mode: "             << params.mode << "\n"
+				  << "Num 0 DM iterations: "  << params.n_iter << "\n"
+				  << "0 DM threshold: "       << params.edge_threshold << "\n"
+				  << "Maximum window size: "  << params.zero_dm_threshold << "\n"
+				  << "Edge-threshold: "       << params.edge_threshold << std::endl;
   
     }
 
 	void PrintTimers (void) {
 		for (auto iter = time_map.begin(); iter != time_map.end(); iter++) { \
-			std::cout << iter->first << " => " << iter->second.value / 1000 << '\n'; \
+			std::cout << iter->first << " => " << iter->second.value << '\n'; \
 		}
 	}
 
@@ -120,27 +125,27 @@ public:
 
 	// ********** Memory util functions  ********** // 
 	
-	void WriteToBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
+	inline void WriteToBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
 	{
 		CHECK_CL(queue.enqueueWriteBuffer(buffer, CL_TRUE, 0, size, host_mem));
 	}
 
-	void ReadFromBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
+	inline void ReadFromBuffer (void *host_mem, const cl::Buffer& buffer, const int size) 
 	{
 		CHECK_CL(queue.enqueueReadBuffer(buffer, CL_TRUE, 0, size, host_mem));
 	}
 
-	void CopyBuffer (const cl::Buffer& src, const cl::Buffer& dest, const int size) 
+	inline void CopyBuffer (const cl::Buffer& src, const cl::Buffer& dest, const int size) 
 	{
 		CHECK_CL(queue.enqueueCopyBuffer(src, dest, 0, 0, size));
 	}
 
-	void ClearBuffer (const cl::Buffer& buffer, const int size) 
+	inline void ClearBuffer (const cl::Buffer& buffer, const int size) 
 	{
 		CHECK_CL(queue.enqueueFillBuffer(buffer, 0, 0, size));
 	}
 
-	cl::Buffer InitBuffer (const cl_mem_flags mem_flag, const int size) 
+	inline cl::Buffer InitBuffer (const cl_mem_flags mem_flag, const int size) 
 	{
 		return cl::Buffer(context, mem_flag, size);
 	}
@@ -156,19 +161,19 @@ public:
 				    int m, int n, 
 				    int nx, int ny);
 
-	void EdgeThreshold (const cl::Buffer& d_out, 
-			            const cl::Buffer& d_in, 
-					    const cl::Buffer& mads, 
-					    float threshold, 
-					    int max_window_size, 
-					    int m, int n, int N,
-					    int nx, int ny);
+	void PointEdgeThreshold (const cl::Buffer& data, 
+			                 const cl::Buffer& medians, 
+					         const cl::Buffer& mads, 
+					         float threshold, 
+					         int max_window_size, 
+					         int m, int n, int N,
+					         int nx, int ny);
 
 	void SumThreshold (const cl::Buffer& m_out, 
 			           const cl::Buffer& d_in, 
 					   const cl::Buffer& m_in, 
 					   const cl::Buffer& thresholds, 
-					   int max_window_size, 
+					   int num_iters, 
 					   float alpha,
 					   int m, int n, int N,
 					   int nx, int ny);
@@ -197,18 +202,20 @@ public:
 	
 	float ComputeStd (const cl::Buffer& data, 
 			          const cl::Buffer& temp, 
+					  int n_flagged_samples,
 					  float mean, 
 					  int n, 
 					  int nx);
 
+	int DetectOutliers (const cl::Buffer& d_out, 
+			            const cl::Buffer& d_in, 
+			            const cl::Buffer& count, 
+						float mean, 
+						float std, 
+						float threshold, 
+						int n, 
+						int nx);
 
-	void DetectOutliers (const cl::Buffer& d_out, 
-			             const cl::Buffer& d_in, 
-						 float mean, 
-						 float std, 
-						 float threshold, 
-						 int n, 
-						 int nx);
 
 	void MaskRowSumThreshold (const cl::Buffer& m_out, 
  					          const cl::Buffer& m_in, 
@@ -219,18 +226,14 @@ public:
 				   int m, int n, int N,
 				   int nx, int ny);
 
-	void ReplaceRFI (const cl::Buffer& d_out, 
-			         const cl::Buffer& d_in, 
-					 const cl::Buffer& m_in, 
-					 const cl::Buffer& new_values, 
-					 const RFIReplaceMode& mode,
-					 int m, int n, int N,
-					 int nx, int ny);
-	
-	void ComputeMeansOld (const cl::Buffer& d_out, 
-								const cl::Buffer& d_in, 
-								int m, int n, int N) ;
+	void FlagTimeSamples (const cl::Buffer& d_out, 
+			              const cl::Buffer& m_in, 
+			              const cl::Buffer& medians, 
+						  int num_flagged_samples,
+				   		  int m, int n, int N,
+				   		  int nx);
 
+	
 };
 
 #endif
