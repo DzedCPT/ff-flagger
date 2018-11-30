@@ -437,7 +437,10 @@ void compute_deviation(global float *d_out,
 	uint gid = get_global_id(0);
 
 	if (gid >= n) return;
-	if (d_in[gid] == 0) return;	
+	if (d_in[gid] == 0) {
+        d_out[gid] = 0; 
+        return;
+    }	
 
 	d_out[gid] = pow(mean - d_in[gid], 2) / (n - n_flagged_samples - 1);
 
@@ -456,6 +459,7 @@ void detect_outliers(global int *d_out,
 	uint gid = get_global_id(0);
 
 	if (gid >= n) return;
+    if (d_in[gid] == 0) return;
 	if (fabs(d_in[gid] - mean) <= std * threshold) return;
 	d_in[gid] = 0;
 	int index = atomic_inc(count);

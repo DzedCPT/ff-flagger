@@ -206,7 +206,7 @@ void RFIPipeline::Flag (const cl::Buffer& data)
 			mean = FloatReduce(time_temp, time_means, params.n_samples) / (params.n_samples - num_flagged_samples);
 			std  = ComputeStd(time_means, time_temp, num_flagged_samples, mean, params.n_samples, 1024);
 			num_flagged_samples = DetectOutliers(flagged_samples, time_means, count, mean, std, params.zero_dm_threshold, params.n_samples, 128);
-           // std::cout << num_flagged_samples << std::endl;
+            
 		}
 		FlagTimeSamples(data, flagged_samples, freq_medians, num_flagged_samples, params.n_channels, params.n_samples, params.n_padded_samples, 128);
 
@@ -520,7 +520,6 @@ float RFIPipeline::ComputeStd (const cl::Buffer& d_in,
 	float to_return = std::sqrt(FloatReduce(temp, temp, n));
 	ADD_TIME_SINCE(ComputeStd, begin);
 	return to_return;
-
 }
 
 
