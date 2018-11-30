@@ -124,11 +124,13 @@ RFIPipeline::Params RFIPipeline::ReadConfigFile (const std::string config_file_n
 	std::string value;
 
 	Params params;
-	params.mode = 1;
+	params.mode = 3;
 	params.n_iter = 1;
 	params.zero_dm_threshold = 2.5;
-	params.edge_threshold = 3.5;
-
+	params.edge_threshold = 3;
+	params.max_window_size = 3;
+	params.stat_freq = 3;
+		
 	while (std::getline(infile, line)) {
 		try {
 			if (line[0] == '#' || line.size() == 0) continue;
@@ -139,6 +141,8 @@ RFIPipeline::Params RFIPipeline::ReadConfigFile (const std::string config_file_n
 			else if (token == "n_iter") params.n_iter = std::stoi(value);
 			else if (token == "edge_threshold") params.edge_threshold = std::stof(value);
 			else if (token == "zero_dm_threshold") params.zero_dm_threshold = std::stof(value);
+			else if (token == "max_window_size") params.max_window_size = std::stoi(value);
+			else if (token == "stat_freq") params.stat_freq = std::stoi(value);
 			else {
 				throw std::runtime_error(line);;
 			}
